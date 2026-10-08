@@ -1,5 +1,6 @@
 import { common } from '@kit.AbilityKit';
-import { picker, fileIo as fs } from '@kit.CoreFileKit';
+import { picker } from '@kit.CoreFileKit';
+import { hilog } from '@kit.PerformanceAnalysisKit';
 import { webview } from '@kit.ArkWeb';
 import { connection } from '@kit.NetworkKit';
 import { BookRecord, KoSyncSettings, ReaderCommand, ReaderEvent, ReaderSettings, RemoteProgress, ReadingPosition } from '../core/Models';
@@ -10,6 +11,7 @@ import { Repository } from './Repository';
 import { CredentialVault } from './CredentialVault';
 import { NativeTransport } from './NativeTransport';
 import { ReaderGateway } from './ReaderGateway';
+import { removeLocalFile } from './LocalFiles';
 
 export class AppController {
   static current?: AppController;
@@ -35,6 +37,8 @@ export class AppController {
   private restoreFailed: boolean = false;
   private epoch: number = 0;
   private importResolve?: () => void;
+  private importReject?: (error: Error) => void;
+  private openTimer: number = -1;
   private closeResolve?: () => void;
   private context: common.UIAbilityContext;
   private events: Promise<void> = Promise.resolve();
@@ -52,7 +56,9 @@ export class AppController {
       this.network.on('netAvailable', () => this.onForeground());
       this.network.register(() => {});
     } catch { this.network = undefined; }
-    this.initialized = true; this.changed();
+    this.initialized = true;
+    if (this.reader?.ready) await this.setAppearance(this.appearance);
+    this.changed();
   }
 
   attach(controller: webview.WebviewController): ReaderGateway {
@@ -61,7 +67,10 @@ export class AppController {
     this.reader = gateway; return gateway;
   }
 
-  private fail(error: Error): void { this.error = error.message; this.status = 'error'; this.changed(); }
+  private fail(error: Error): void {
+    hilog.error(0x0000, 'HarmonyReadest', 'Operation failed: %{public}s', error.message);
+    this.error = error.message; this.status = 'error'; this.changed();
+  }
   private scope(): string { return `${this.config.serverUrl}|${this.config.username}`; }
 
   async saveConfig(config: KoSyncSettings): Promise<void> {
@@ -93,6 +102,7 @@ export class AppController {
     if (!this.reader?.ready || this.busy) return;
     const selected = await new picker.DocumentViewPicker(this.context).select({ maxSelectNumber: 20,
       fileSuffixFilters: ['EPUB books|.epub'] });
+    if (!selected.length) return;
     this.busy = true; this.importing = true; this.error = ''; this.changed();
     try {
       for (const uri of selected) {
@@ -101,26 +111,34 @@ export class AppController {
         const book = await this.store.importFile(uri, name);
         this.activeBook = book;
         await new Promise<void>((resolve: () => void, reject: (error: Error) => void) => {
-          const timer = setTimeout(() => { this.importResolve = undefined; reject(new Error('IMPORT_TIMEOUT')); }, 30000);
-          this.importResolve = () => { clearTimeout(timer); resolve(); };
-          this.reader!.open(book).catch((error: Error) => { clearTimeout(timer); this.importResolve = undefined; reject(error); });
+          const timer = setTimeout(() => {
+            this.importResolve = undefined; this.importReject = undefined;
+            this.reader!.reset(); reject(new Error('IMPORT_TIMEOUT'));
+          }, 30000);
+          this.importResolve = () => { clearTimeout(timer); this.importReject = undefined; resolve(); };
+          this.importReject = (error: Error) => { clearTimeout(timer); this.importResolve = undefined; this.importReject = undefined; reject(error); };
+          this.reader!.open(book, true).catch((error: Error) => this.importReject?.(error));
         });
         const duplicate = this.books.find((existing: BookRecord) => existing.hash === book.hash);
         await this.reader!.send(this.command('close')); this.reader!.cancel();
         if (!book.hash || duplicate) {
-          if (fs.accessSync(book.path)) fs.unlinkSync(book.path);
-          if (book.cover && fs.accessSync(book.cover)) fs.unlinkSync(book.cover);
+          removeLocalFile(book.path);
+          removeLocalFile(book.cover);
           if (duplicate) this.error = 'DUPLICATE_BOOK';
         } else { await this.store.save(book); this.books.unshift(book); }
       }
+    } catch (error) {
+      this.fail(error as Error);
     } finally {
-      if (this.importing && this.activeBook && !this.books.some((value: BookRecord) => value.id === this.activeBook!.id)) {
-        const draft = this.activeBook;
-        if (fs.accessSync(draft.path)) fs.unlinkSync(draft.path);
-        if (draft.cover && fs.accessSync(draft.cover)) fs.unlinkSync(draft.cover);
+      try {
+        if (this.activeBook && !this.books.some((value: BookRecord) => value.id === this.activeBook!.id)) {
+          removeLocalFile(this.activeBook.path); removeLocalFile(this.activeBook.cover);
+        }
+      } finally {
+        this.importResolve = undefined; this.importReject = undefined;
+        this.activeBook = undefined; this.importing = false; this.busy = false; this.opened = false;
+        this.reader?.cancel(); this.changed();
       }
-      this.activeBook = undefined; this.importing = false; this.busy = false; this.opened = false;
-      this.reader?.cancel(); this.changed();
     }
   }
 
@@ -131,12 +149,22 @@ export class AppController {
     this.busy = true; book.lastOpenedAt = Date.now();
     if (book.syncScope !== this.scope()) { book.syncScope = this.scope(); book.remoteToken = ''; book.dirty = false; }
     await this.store.save(book); this.changed();
-    try { await this.reader.open(book); } catch (error) { this.busy = false; this.fail(error as Error); }
+    const epoch = this.epoch;
+    this.openTimer = setTimeout(() => {
+      if (epoch !== this.epoch || this.opened) return;
+      this.reader?.reset(); this.activeBook = undefined; this.busy = false;
+      this.fail(new Error('READER_TIMEOUT'));
+    }, 30000);
+    try { await this.reader.open(book); } catch (error) {
+      clearTimeout(this.openTimer); this.reader.cancel(); this.activeBook = undefined;
+      this.busy = false; this.fail(error as Error);
+    }
   }
 
   command(type: string): ReaderCommand { const command = new ReaderCommand(); command.type = type; return command; }
 
   async close(): Promise<void> {
+    clearTimeout(this.openTimer);
     clearTimeout(this.debounce);
     if (!this.activeBook) return;
     await this.events;
@@ -169,7 +197,11 @@ export class AppController {
   private async handle(event: ReaderEvent): Promise<void> {
     if (event.type !== 'ready' && !isCurrentSession(this.reader?.session || '', event.session)) return;
     const book = this.activeBook;
-    if (event.type === 'ready') { await this.setAppearance(this.appearance); return; }
+    if (event.type === 'ready') {
+      if (this.initialized) await this.setAppearance(this.appearance);
+      else this.changed();
+      return;
+    }
     if (!book) return;
     if (event.type === 'metadata' && event.metadata) {
       if (!/^[0-9a-f]{32}$/.test(event.metadata.hash)) throw new Error('INVALID_EPUB');
@@ -188,14 +220,18 @@ export class AppController {
     } else if (event.type === 'position' && event.position && !book.position.cfi) {
       book.position = event.position; book.position.updatedAt = 0; book.position.revision = 0;
     } else if (event.type === 'opened') {
+      clearTimeout(this.openTimer);
       if (this.importing) { this.importResolve?.(); this.importResolve = undefined; }
       else {
         this.opened = true; this.busy = false; await this.store.save(book);
         this.changed(); if (this.config.enabled) this.sync().catch(() => {});
       }
     } else if (event.type === 'error') {
-      if (this.importing) { book.hash = ''; this.importResolve?.(); this.importResolve = undefined; }
-      this.busy = false; this.blocked = true; throw new Error(event.requestId ? 'UNRESOLVED_POSITION' : event.message || 'READER_ERROR');
+      clearTimeout(this.openTimer);
+      const error = new Error(event.requestId ? 'UNRESOLVED_POSITION' : event.message || 'READER_ERROR');
+      if (this.importing) { this.importReject?.(error); return; }
+      if (!this.opened) { this.reader?.cancel(); this.activeBook = undefined; }
+      this.busy = false; this.blocked = true; throw error;
     } else if (event.type === 'closed') { this.closeResolve?.(); this.closeResolve = undefined; }
     else if (event.type === 'toggleControls') this.controls = !this.controls;
     this.changed();
@@ -233,6 +269,7 @@ export class AppController {
   onForeground(): void { if (this.opened && !this.conflict && !this.restoreFailed) { this.blocked = false; this.sync().catch(() => {}); } }
 
   dispose(): void {
+    clearTimeout(this.openTimer);
     this.onBackground(); this.epoch++; try { this.network?.unregister(() => {}); } catch {} this.reader?.cancel();
     this.changed = () => {}; if (AppController.current === this) AppController.current = undefined;
   }

@@ -3,6 +3,7 @@ import { relationalStore, preferences } from '@kit.ArkData';
 import { fileIo as fs } from '@kit.CoreFileKit';
 import { util } from '@kit.ArkTS';
 import { BookRecord, ReaderSettings } from '../core/Models';
+import { removeLocalFile } from './LocalFiles';
 
 export class Repository {
   private db?: relationalStore.RdbStore;
@@ -39,8 +40,8 @@ export class Repository {
   async remove(book: BookRecord): Promise<void> {
     await this.writes;
     await this.db!.executeSql('DELETE FROM books WHERE id = ?', [book.id]);
-    if (fs.accessSync(book.path)) fs.unlinkSync(book.path);
-    if (book.cover && fs.accessSync(book.cover)) fs.unlinkSync(book.cover);
+    removeLocalFile(book.path);
+    removeLocalFile(book.cover);
   }
 
   async settings(): Promise<ReaderSettings> {
@@ -69,17 +70,23 @@ export class Repository {
       output = fs.openSync(path, fs.OpenMode.CREATE | fs.OpenMode.READ_WRITE);
       const chunk = new ArrayBuffer(256 * 1024);
       let read = 0;
-      while ((read = await fs.read(source.fd, chunk)) > 0) {
+      let copied = 0;
+      const deadline = Date.now() + 30000;
+      while (copied < size) {
+        if (Date.now() > deadline) throw new Error('IMPORT_TIMEOUT');
+        read = await fs.read(source.fd, chunk, { length: Math.min(chunk.byteLength, size - copied) });
+        if (read <= 0) throw new Error('IMPORT_READ_FAILED');
         let written = 0;
         while (written < read) {
           const count = await fs.write(output.fd, chunk.slice(written, read));
           if (count <= 0) throw new Error('IMPORT_WRITE_FAILED');
           written += count;
         }
+        copied += read;
       }
     } catch (error) {
       if (output) { fs.closeSync(output); output = undefined; }
-      if (fs.accessSync(path)) fs.unlinkSync(path);
+      removeLocalFile(path);
       throw error as Error;
     } finally { fs.closeSync(source); if (output) fs.closeSync(output); }
     const book = new BookRecord();

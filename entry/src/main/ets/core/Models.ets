@@ -74,6 +74,7 @@ export class ReaderCommand {
   percentage?: number;
   settings?: ReaderSettings;
   requestId?: string;
+  metadataOnly?: boolean;
 }
 
 export interface ReaderEvent {

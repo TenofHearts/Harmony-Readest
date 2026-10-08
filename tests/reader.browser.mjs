@@ -20,12 +20,13 @@ async function maliciousEPUB(extra = {}) {
   return Buffer.from(await (await writer.close()).arrayBuffer());
 }
 const evil = await maliciousEPUB();
+const continuous = await maliciousEPUB({ 'chapter.xhtml': `<html xmlns="http://www.w3.org/1999/xhtml"><head><title>Continuous pages</title></head><body><p>${Array.from({ length: 2400 }, (_, i) => `<span data-word="${i}">word${String(i).padStart(4, '0')}</span>`).join(' ')}</p></body></html>` });
 const drm = await maliciousEPUB({ 'META-INF/encryption.xml': '<encryption xmlns="urn:oasis:names:tc:opendocument:xmlns:container"><EncryptedData xmlns="http://www.w3.org/2001/04/xmlenc#"><EncryptionMethod Algorithm="http://www.w3.org/2001/04/xmlenc#aes128-cbc"/><CipherData><CipherReference URI="chapter.xhtml"/></CipherData></EncryptedData></encryption>' });
 const server = createServer(async (req, res) => {
   try {
     const name = req.url?.split('?')[0];
-    if (name === '/books/alice.epub' || name === '/books/evil.epub' || name === '/books/drm.epub') {
-      res.writeHead(200, { 'Content-Type': 'application/epub+zip' }); res.end(name.includes('evil') ? evil : name.includes('drm') ? drm : epub); return;
+    if (['/books/alice.epub', '/books/evil.epub', '/books/drm.epub', '/books/continuous.epub'].includes(name)) {
+      res.writeHead(200, { 'Content-Type': 'application/epub+zip' }); res.end(name.includes('continuous') ? continuous : name.includes('evil') ? evil : name.includes('drm') ? drm : epub); return;
     }
     if (!['/reader/index.html', '/reader/reader.js'].includes(name)) { res.writeHead(404); res.end(); return; }
     res.writeHead(200, { 'Content-Type': name.endsWith('.js') ? 'text/javascript' : 'text/html' });
@@ -42,6 +43,10 @@ try {
   const page = await browser.newPage({ viewport: { width: 412, height: 780 } });
   page.on('pageerror', error => report.consoleErrors.push(error.message));
   await page.addInitScript(() => {
+    // Match restricted embedded engines: neither WASM nor native raw-deflate
+    // support can be required to import/render an offline EPUB.
+    window.WebAssembly = undefined;
+    window.DecompressionStream = undefined;
     window.events = []; window.hacked = false;
     window.HarmonyReader = { post: value => window.events.push(JSON.parse(value)) };
   });
@@ -50,7 +55,20 @@ try {
   const command = async cmd => {
     await page.evaluate(async c => { window.readerReceive(c); await window.readerTest.idle(); }, { version: 1, session: 'alice', ...cmd });
   };
+  const externalRequests = [];
+  page.on('request', req => { if (!req.url().startsWith(origin) && !req.url().startsWith('blob:')) externalRequests.push(req.url()); });
+  await command({ type: 'open', url: `${origin}/books/alice.epub`, metadataOnly: true });
+  assert.equal(await page.evaluate(() => window.readerTest.getView()), undefined);
+  assert.equal(await page.evaluate(() => window.events.some(e => e.type === 'cover')), true);
+  assert.equal(await page.evaluate(() => window.events.at(-1).type), 'opened');
+  assert.deepEqual(externalRequests, []);
+  report.tests.push('Offline metadata/cover import completes without creating a renderer or contacting the internet');
   await command({ type: 'open', url: `${origin}/books/alice.epub` });
+  assert.deepEqual(await page.evaluate(() => {
+    const bounds = window.readerTest.getView().getBoundingClientRect();
+    return { top: bounds.top, bottom: bounds.bottom, viewport: innerHeight };
+  }), { top: 0, bottom: 780, viewport: 780 });
+  report.tests.push('Empty error banner does not offset the reading viewport or clip its last lines');
   assert.equal(await page.evaluate(() => window.events.some(e => e.type === 'opened')), true,
     JSON.stringify(await page.evaluate(() => window.events)));
   const metadata = await page.evaluate(() => window.events.find(e => e.type === 'metadata').metadata);
@@ -106,6 +124,74 @@ try {
   assert.equal(await page.evaluate(() => document.body.style.background), 'rgb(25, 35, 33)');
   assert.equal(await page.evaluate(() => window.events.filter(e => e.type === 'position').at(-1).restored), true);
   report.tests.push('Appearance and landscape relayout');
+  await command({ type: 'appearance', settings: { fontSize: 20, lineHeight: 1.7, theme: 'light' } });
+  await page.setViewportSize({ width: 1180, height: 780 });
+  await command({ type: 'open', url: `${origin}/books/continuous.epub` });
+  assert.equal(await page.evaluate(() => window.readerTest.getView().renderer.columnCount), 2);
+  const visibleWords = () => page.evaluate(() => {
+    const contents = window.readerTest.getView().renderer.getContents();
+    const visible = [];
+    for (const { doc } of contents) {
+      const frame = doc.defaultView.frameElement.getBoundingClientRect();
+      for (const span of doc.querySelectorAll('[data-word]')) {
+        const r = span.getBoundingClientRect();
+        const left = r.left + frame.left, right = r.right + frame.left;
+        const top = r.top + frame.top, bottom = r.bottom + frame.top;
+        if (left >= -1 && right <= innerWidth + 1 && top >= 0 && bottom <= innerHeight + 1) visible.push(Number(span.dataset.word));
+      }
+    }
+    return visible.sort((a, b) => a - b);
+  });
+  let words = await visibleWords(); assert.ok(words.length > 20); assert.equal(words[0], 0);
+  const lowestWord = await page.evaluate(() => {
+    let bottom = 0;
+    for (const { doc } of window.readerTest.getView().renderer.getContents()) {
+      const frame = doc.defaultView.frameElement.getBoundingClientRect();
+      for (const span of doc.querySelectorAll('[data-word]')) {
+        const r = span.getBoundingClientRect();
+        if (r.left + frame.left >= 0 && r.right + frame.left <= innerWidth && r.bottom + frame.top <= innerHeight)
+          bottom = Math.max(bottom, r.bottom + frame.top);
+      }
+    }
+    return bottom;
+  });
+  assert.ok(lowestWord > 700, `Text must fill the viewport, not only its upper half (lowest word: ${lowestWord})`);
+  for (let spread = 0; spread < 5; spread++) {
+    assert.equal(words.length, words.at(-1) - words[0] + 1, 'Every word in the visible spread is connected');
+    const nextWord = words.at(-1) + 1;
+    await command({ type: 'next' }); words = await visibleWords();
+    assert.equal(words[0], nextWord, 'The next spread starts immediately after the previous spread');
+  }
+  await page.screenshot({ path: 'output/playwright/reader-two-columns.png' });
+  const startCFI = await page.evaluate(() => window.readerTest.getView().lastLocation.cfi);
+  await command({ type: 'next' });
+  const expectedCFI = await page.evaluate(() => window.readerTest.getView().lastLocation.cfi);
+  await command({ type: 'restore', cfi: startCFI, requestId: 'swipe-start' });
+  const cdp = await page.context().newCDPSession(page);
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: 900, y: 390 }] });
+  for (const x of [800, 700, 600, 500]) await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x, y: 390 }] });
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+  await page.waitForFunction(cfi => window.readerTest.getView().lastLocation.cfi === cfi, expectedCFI);
+  await page.waitForTimeout(150);
+  assert.equal(await page.evaluate(() => window.readerTest.getView().lastLocation.cfi), expectedCFI, 'One touch swipe turns exactly one spread');
+  await cdp.detach();
+  const toggleCount = await page.evaluate(() => window.events.filter(e => e.type === 'toggleControls').length);
+  for (const x of [1180 * .4, 1180 * .5, 1180 * .6]) await page.mouse.click(x, 250);
+  assert.equal(await page.evaluate(() => window.events.filter(e => e.type === 'toggleControls').length), toggleCount + 3);
+  assert.equal(await page.evaluate(() => window.readerTest.getView().lastLocation.cfi), expectedCFI, 'Middle-third taps toggle controls without turning pages, including the gutter');
+  await command({ type: 'next' });
+  const expectedTapCFI = await page.evaluate(() => window.readerTest.getView().lastLocation.cfi);
+  await command({ type: 'restore', cfi: expectedCFI, requestId: 'tap-start' });
+  await page.mouse.click(1050, 250);
+  await page.mouse.click(1050, 250);
+  await page.waitForFunction(cfi => window.readerTest.getView().lastLocation.cfi === cfi, expectedTapCFI);
+  await page.waitForTimeout(310);
+  assert.equal(await page.evaluate(() => window.readerTest.getView().lastLocation.cfi), expectedTapCFI, 'Accidental rapid duplicate taps turn once');
+  await page.mouse.click(100, 250);
+  await page.waitForFunction(cfi => window.readerTest.getView().lastLocation.cfi === cfi, expectedCFI);
+  await page.setViewportSize({ width: 412, height: 780 });
+  await page.waitForFunction(() => window.readerTest.getView().renderer.columnCount === 1);
+  report.tests.push('Full-height two-column tablet spreads, five consecutive boundaries without missing words, one turn per touch swipe, middle-third controls, guarded edge taps, and single-column phone relayout');
   const tracking = [];
   page.on('request', req => { if (req.url().startsWith('https://example.com')) tracking.push(req.url()); });
   await command({ type: 'open', url: `${origin}/books/evil.epub` });
@@ -120,6 +206,38 @@ try {
   await command({ type: 'open', url: `${origin}/books/drm.epub` });
   assert.equal(await page.evaluate(() => window.events.at(-1).message), 'DRM_OR_ENCRYPTED');
   report.tests.push('EPUB content encryption is rejected before rendering');
+  const offline = await browser.newContext({ offline: true, viewport: { width: 412, height: 780 } });
+  const offlineOrigin = 'https://reader.harmonyreadest.invalid';
+  const offlineUnexpected = [];
+  await offline.route('**/*', async route => {
+    const path = route.request().url().slice(offlineOrigin.length);
+    if (route.request().url() === `${offlineOrigin}/books/alice.epub`) {
+      await route.fulfill({ contentType: 'application/epub+zip', body: epub });
+    } else if (['/reader/index.html', '/reader/reader.js'].includes(path)) {
+      await route.fulfill({ contentType: path.endsWith('.js') ? 'text/javascript' : 'text/html',
+        body: await readFile(`output/playwright/bundle/${path.split('/').pop()}`) });
+    } else { offlineUnexpected.push(route.request().url()); await route.abort(); }
+  });
+  const offlinePage = await offline.newPage();
+  await offlinePage.addInitScript(() => {
+    window.events = []; window.WebAssembly = undefined; window.DecompressionStream = undefined;
+    window.HarmonyReader = { post: value => window.events.push(JSON.parse(value)) };
+  });
+  await offlinePage.goto(`${offlineOrigin}/reader/index.html`);
+  await offlinePage.waitForFunction(() => window.readerTest);
+  await offlinePage.evaluate(async origin => {
+    window.readerReceive({ version: 1, session: 'offline', type: 'open', url: `${origin}/books/alice.epub`, metadataOnly: true });
+    await window.readerTest.idle();
+    window.readerReceive({ version: 1, session: 'offline', type: 'open', url: `${origin}/books/alice.epub` });
+    await window.readerTest.idle();
+  }, offlineOrigin);
+  assert.equal(await offlinePage.evaluate(() => navigator.onLine), false);
+  assert.equal(await offlinePage.evaluate(() => window.events.filter(e => e.type === 'opened').length), 2);
+  assert.ok(await offlinePage.evaluate(() => window.readerTest.getView().lastLocation.cfi));
+  assert.deepEqual(offlineUnexpected, []);
+  await offlinePage.screenshot({ path: 'output/playwright/reader-offline.png' });
+  await offline.close();
+  report.tests.push('Import and rendering succeed with the browser offline and only native-style local resource responses');
   assert.deepEqual(report.consoleErrors, []);
   await mkdir('output/playwright', { recursive: true });
   await writeFile('output/playwright/browser-results.json', JSON.stringify(report, null, 2));

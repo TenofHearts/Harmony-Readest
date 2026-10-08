@@ -25,7 +25,6 @@ export class ReaderGateway {
   ready: boolean = false;
   private book?: BookRecord;
   private pending?: PendingRestore;
-  private file?: fs.File;
   onEvent: (event: ReaderEvent) => void = () => {};
   private context: common.UIAbilityContext;
   private controller: webview.WebviewController;
@@ -55,19 +54,41 @@ export class ReaderGateway {
     await this.controller.runJavaScript(`window.readerReceive(${JSON.stringify(command)})`);
   }
 
-  async open(book: BookRecord): Promise<void> {
+  async open(book: BookRecord, metadataOnly: boolean = false): Promise<void> {
     this.cancel();
     this.book = book; this.session = util.generateRandomUUID();
-    this.file = fs.openSync(book.path, fs.OpenMode.READ_ONLY);
     const command = new ReaderCommand(); command.type = 'open'; command.cfi = book.position.cfi;
+    command.metadataOnly = metadataOnly;
     command.url = `${READER_ORIGIN}/books/${book.id}.epub`;
     await this.send(command);
   }
 
   cancel(): void {
     if (this.pending) { clearTimeout(this.pending.timer); this.pending.reject(new Error('SESSION_CLOSED')); this.pending = undefined; }
-    if (this.file) { fs.closeSync(this.file); this.file = undefined; }
     this.session = ''; this.book = undefined;
+  }
+
+  reset(): void {
+    this.cancel(); this.ready = false;
+    // A stuck renderer command must not hold subsequent imports in its queue.
+    this.controller.loadUrl(READER_URL);
+  }
+
+  private async bookBytes(path: string): Promise<ArrayBuffer> {
+    const file = fs.openSync(path, fs.OpenMode.READ_ONLY);
+    try {
+      const size = fs.statSync(file.fd).size;
+      if (size <= 0 || size > 128 * 1024 * 1024) throw new Error('BOOK_TOO_LARGE');
+      const bytes = new Uint8Array(size);
+      const chunk = new ArrayBuffer(256 * 1024);
+      let offset = 0;
+      while (offset < size) {
+        const count = await fs.read(file.fd, chunk, { length: Math.min(chunk.byteLength, size - offset) });
+        if (count <= 0) throw new Error('IMPORT_READ_FAILED');
+        bytes.set(new Uint8Array(chunk, 0, count), offset); offset += count;
+      }
+      return bytes.buffer;
+    } finally { fs.closeSync(file); }
   }
 
   restore(remote: RemoteProgress): Promise<ReadingPosition> {
@@ -90,9 +111,14 @@ export class ReaderGateway {
     response.setResponseCode(404); response.setReasonMessage('Not Found'); response.setResponseData('');
     if (!value.startsWith(`${READER_ORIGIN}/`)) return response;
     const name = value.slice(READER_ORIGIN.length);
-    if (this.book && name === `/books/${this.book.id}.epub` && this.file) {
+    if (this.book && name === `/books/${this.book.id}.epub`) {
       response.setResponseCode(200); response.setReasonMessage('OK'); response.setResponseMimeType('application/epub+zip');
-      response.setResponseData(this.file.fd); return response;
+      response.setResponseIsReady(false);
+      // Send binary data with descriptor lifetime entirely in native code.
+      this.bookBytes(this.book.path).then((bytes: ArrayBuffer) => {
+        response.setResponseData(bytes); response.setResponseIsReady(true);
+      }).catch(() => { response.setResponseCode(404); response.setResponseIsReady(true); });
+      return response;
     }
     if (!/^\/reader\/(index\.html|reader\.js|provenance\.json)$/.test(name)) return response;
     response.setResponseCode(200); response.setReasonMessage('OK');

@@ -2,6 +2,8 @@
 
 A new HarmonyOS app with a native ArkUI library and settings, and an offline EPUB reader built from Readest's Foliate engine. The initial release synchronizes reading positions with Readest through a shared KoSync server.
 
+The bookshelf and settings follow Readest's compact search toolbar, cover grid, tabbed settings and neutral boxed lists. EPUB import and reading work without an internet connection; wide screens show two reading columns and phones show one.
+
 ## First release
 
 - Import reflowable EPUBs, extract covers and metadata, and resume saved positions offline.
@@ -29,7 +31,7 @@ npm ci
 
 The script sets the SDK/JDK for the build process and runs Hvigor. A Hvigor hook builds all reader assets into `entry/src/main/resources/rawfile/reader` before packaging, including when using DevEco Studio's Run button after `npm ci`. No CDN or hosted reader is required. Vendored sources and the npm lockfile make normal builds independent of upstream changes.
 
-The current project has no signing profile. Its build produces `entry/build/default/outputs/default/entry-default-unsigned.hap`. Configure signing in DevEco Studio and create/start an API 24 emulator before installing or running it. No signing keys or certificates are committed.
+Builds produce `entry/build/default/outputs/default/entry-default-unsigned.hap`. With a local signing profile configured in DevEco Studio, they also produce `entry-default-signed.hap`, which can run on a connected device or API 24 emulator. Signing credentials belong to the local development environment.
 
 ## Tests
 

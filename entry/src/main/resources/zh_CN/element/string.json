@@ -18,7 +18,7 @@
     },
     {
       "name": "library",
-      "value": "我的书架"
+      "value": "书架"
     },
     {
       "name": "books",
@@ -38,11 +38,11 @@
     },
     {
       "name": "empty_title",
-      "value": "从这里翻开新的一页"
+      "value": "书架还是空的"
     },
     {
       "name": "empty_description",
-      "value": "从设备导入 EPUB。书架和阅读位置会保存在本地，离线也能阅读。"
+      "value": "从设备添加书籍，即可开始阅读。无需网络连接。"
     },
     {
       "name": "import_first",
@@ -258,11 +258,11 @@
     },
     {
       "name": "error_import_timeout",
-      "value": "导入超时，请尝试较小的 EPUB。"
+      "value": "读取 EPUB 超时，请重新选择文件。"
     },
     {
       "name": "error_reader_timeout",
-      "value": "阅读器恢复位置超时。"
+      "value": "打开书籍超时，请重新打开。"
     },
     {
       "name": "error_server_error",
@@ -274,7 +274,91 @@
     },
     {
       "name": "error_generic",
-      "value": "操作失败，已保存的阅读记录仍然保留。请重试或检查网络连接。"
+      "value": "操作未能完成，请重试。已保存的阅读记录仍然保留。"
+    },
+    {
+      "name": "search_books",
+      "value": "搜索书籍…"
+    },
+    {
+      "name": "clear_search",
+      "value": "清除搜索"
+    },
+    {
+      "name": "dismiss",
+      "value": "关闭"
+    },
+    {
+      "name": "view_options",
+      "value": "显示"
+    },
+    {
+      "name": "view_grid",
+      "value": "网格"
+    },
+    {
+      "name": "view_list",
+      "value": "列表"
+    },
+    {
+      "name": "sort_recent",
+      "value": "最近阅读"
+    },
+    {
+      "name": "sort_title",
+      "value": "书名"
+    },
+    {
+      "name": "no_results",
+      "value": "没有找到匹配的书籍"
+    },
+    {
+      "name": "font_layout",
+      "value": "字体与布局"
+    },
+    {
+      "name": "theme",
+      "value": "主题"
+    },
+    {
+      "name": "integrations",
+      "value": "集成"
+    },
+    {
+      "name": "about",
+      "value": "关于"
+    },
+    {
+      "name": "preview",
+      "value": "预览"
+    },
+    {
+      "name": "preview_text",
+      "value": "书是握在手中的梦。翻开一页，走进另一个世界。"
+    },
+    {
+      "name": "decrease_font",
+      "value": "减小字号"
+    },
+    {
+      "name": "increase_font",
+      "value": "增大字号"
+    },
+    {
+      "name": "opening",
+      "value": "正在打开书籍…"
+    },
+    {
+      "name": "error_import_read_failed",
+      "value": "无法读取设备上的 EPUB 文件，请重新选择文件。"
+    },
+    {
+      "name": "error_import_write_failed",
+      "value": "无法保存 EPUB 文件，请检查设备存储空间。"
+    },
+    {
+      "name": "error_book_not_found",
+      "value": "找不到本地书籍文件，请重新导入 EPUB。"
     }
   ]
 }

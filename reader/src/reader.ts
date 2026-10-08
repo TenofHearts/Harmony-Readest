@@ -1,6 +1,8 @@
 import { EPUB } from '../../vendor/foliate-js/epub.js';
 import '../../vendor/foliate-js/view.js';
-import { BlobReader, BlobWriter, TextWriter, ZipReader, configure } from '@zip.js/zip.js';
+// The JS codec is bundled locally; it does not fetch/compile an inline WASM
+// module or rely on ArkWeb's optional native compression APIs.
+import { BlobReader, BlobWriter, TextWriter, ZipReader, configure } from '@zip.js/zip.js/index-native.js';
 import { partialMD5 } from '../../vendor/readest/apps/readest-app/src/utils/md5';
 import { getCFIFromXPointer, getXPointerFromCFI, XCFI } from '../../vendor/readest/apps/readest-app/src/utils/xcfi';
 declare const __READER_TEST__: boolean;
@@ -19,6 +21,7 @@ let suppress = 0;
 let lastPosition: any;
 let eventQueue = Promise.resolve();
 let userActionUntil = 0;
+let lastTapTurnAt = 0;
 let settings = { fontSize: 20, lineHeight: 1.7, theme: 'light' };
 const themes = { light: ['#faf8f2', '#252b29'], dark: ['#192321', '#e3e8df'], sepia: ['#f1e5cf', '#433a2e'] };
 const unsafeURL = (value: string) => /^(?:https?:|ftp:|javascript:|\/\/)/i.test(value.trim());
@@ -27,7 +30,7 @@ const offlineCSS = (value: string) => value
   .replace(/@import\s+(?:url\([^)]*\)|['"][^'"]*['"])[^;]*;?/gi, '');
 
 export async function loadEPUB(file: File) {
-  configure({ useWebWorkers: false });
+  configure({ useWebWorkers: false, useCompressionStream: false });
   const zip = new ZipReader(new BlobReader(file));
   try {
     const entries = await zip.getEntries();
@@ -101,6 +104,36 @@ function appearance() {
     p,div,li{line-height:${settings.lineHeight}!important}a{color:inherit}`);
 }
 
+function bindGestures(doc: Document) {
+  let downX = 0, downY = 0, downAt = 0;
+  const point = (event: PointerEvent) => {
+    const frame = doc.defaultView?.frameElement?.getBoundingClientRect();
+    // EPUB iframes can span many off-screen columns. Their document width is
+    // not the visible screen width, and must not determine tap zones.
+    return { x: event.clientX + (frame?.left ?? 0), y: event.clientY + (frame?.top ?? 0) };
+  };
+  doc.addEventListener('pointerdown', (event: PointerEvent) => {
+    const p = point(event); downX = p.x; downY = p.y; downAt = Date.now();
+    userActionUntil = Date.now() + 3000;
+  });
+  doc.addEventListener('pointerup', (event: PointerEvent) => {
+    if (suppress || !view || event.button !== 0) return;
+    if (doc.getSelection()?.toString() || (event.target as Element)?.closest?.('a')) return;
+    const p = point(event), dx = p.x - downX, dy = p.y - downY;
+    // Foliate handles touch swipes, including movement that emits pointercancel.
+    // These listeners only handle deliberate, stationary taps.
+    if (Date.now() - downAt > 500 || Math.abs(dx) > 10 || Math.abs(dy) > 10) return;
+    const ratio = p.x / window.innerWidth;
+    if (ratio >= 1 / 3 && ratio <= 2 / 3) { emit('toggleControls'); return; }
+    if (ratio < 0 || ratio > 1 || Date.now() - lastTapTurnAt < 300) return;
+    lastTapTurnAt = Date.now(); userActionUntil = Date.now() + 3000;
+    void (ratio < 1 / 3 ? view.prev() : view.next());
+  });
+}
+
+// Also handle taps on the page gutters outside chapter iframes.
+bindGestures(document);
+
 async function snapshot(location: any, capturedSession: string, restored: boolean) {
   if (!location?.cfi || capturedSession !== session) return;
   let xpointer = '';
@@ -125,6 +158,7 @@ async function open(command: any) {
   session = command.session;
   suppress++;
   try {
+    document.getElementById('error')!.textContent = '';
     const response = await fetch(command.url);
     if (!response.ok) throw Error('BOOK_NOT_FOUND');
     const file = new File([await response.blob()], 'book.epub', { type: 'application/epub+zip' });
@@ -140,23 +174,12 @@ async function open(command: any) {
       });
       emit('cover', { cover: base64 });
     }
+    // Import runs behind the native bookshelf. Extracting metadata must not
+    // depend on an iframe loading or a hidden renderer producing a page.
+    if (command.metadataOnly) { emit('opened'); return; }
     view = document.createElement('foliate-view');
     document.body.append(view);
-    view.addEventListener('load', ({ detail: { doc } }: any) => {
-      let downX = 0, downY = 0, downAt = 0;
-      doc.addEventListener('pointerdown', (e: PointerEvent) => { downX = e.clientX; downY = e.clientY; downAt = Date.now(); userActionUntil = Date.now() + 1500; });
-      doc.addEventListener('pointerup', (e: PointerEvent) => {
-        if (suppress) return;
-        if (doc.getSelection()?.toString() || (e.target as Element)?.closest('a')) return;
-        const dx = e.clientX - downX, dy = e.clientY - downY;
-        if (Math.abs(dx) > 50 && Math.abs(dx) > Math.abs(dy)) { userActionUntil = Date.now() + 1500; void (dx < 0 ? view.next() : view.prev()); return; }
-        if (Date.now() - downAt < 350 && Math.abs(dx) < 10 && Math.abs(dy) < 10) {
-          const ratio = e.clientX / doc.documentElement.clientWidth;
-          if (ratio < .25 || ratio > .75) { userActionUntil = Date.now() + 1500; void (ratio < .25 ? view.prev() : view.next()); }
-          else emit('toggleControls');
-        }
-      });
-    });
+    view.addEventListener('load', ({ detail: { doc } }: any) => bindGestures(doc));
     view.addEventListener('external-link', (event: Event) => event.preventDefault());
     view.addEventListener('link', () => { userActionUntil = Date.now() + 1500; });
     await view.open(book);
@@ -167,9 +190,13 @@ async function open(command: any) {
       const location = view.lastLocation;
       eventQueue = eventQueue.then(() => snapshot(location, captured, restored)).catch(() => {});
     });
-    view.renderer.setAttribute('gap', '8%');
-    view.renderer.setAttribute('margin', '12px');
-    view.renderer.setAttribute('max-column-count', '1');
+    view.renderer.setAttribute('gap', '4%');
+    view.renderer.setAttribute('column-gap', '32px');
+    // Foliate accepts per-side margins; a generic "margin" attribute is ignored.
+    for (const side of ['top', 'bottom']) view.renderer.setAttribute(`margin-${side}`, '12px');
+    for (const side of ['left', 'right']) view.renderer.setAttribute(`margin-${side}`, '24px');
+    view.renderer.setAttribute('max-column-count', '2');
+    view.renderer.setAttribute('max-inline-size', '720px');
     appearance();
     await view.init({ lastLocation: command.cfi || undefined });
     await eventQueue;
@@ -204,6 +231,7 @@ async function receive(command: any) {
       } finally { suppress--; }
     }
   } catch (error) {
+    console.error('EPUB operation failed:', String((error as Error).message));
     emit('error', { requestId: command.requestId, message: String((error as Error).message) });
     if (command.type === 'open') { await close(); document.getElementById('error')!.textContent = String((error as Error).message); }
   }

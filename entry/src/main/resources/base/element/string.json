@@ -18,7 +18,7 @@
     },
     {
       "name": "library",
-      "value": "Your library"
+      "value": "Bookshelf"
     },
     {
       "name": "books",
@@ -38,11 +38,11 @@
     },
     {
       "name": "empty_title",
-      "value": "A new chapter starts here"
+      "value": "Your library is empty"
     },
     {
       "name": "empty_description",
-      "value": "Import an EPUB from your device. Your library and reading position are saved offline."
+      "value": "Add books from your device to start reading. No internet connection required."
     },
     {
       "name": "import_first",
@@ -258,11 +258,11 @@
     },
     {
       "name": "error_import_timeout",
-      "value": "Import timed out. Try a smaller EPUB."
+      "value": "Reading this EPUB took too long. Select the file again."
     },
     {
       "name": "error_reader_timeout",
-      "value": "The reader did not restore the position in time."
+      "value": "The book could not be opened in time. Try opening it again."
     },
     {
       "name": "error_server_error",
@@ -274,7 +274,91 @@
     },
     {
       "name": "error_generic",
-      "value": "The operation failed. Your saved reading data is retained. Retry or check the connection."
+      "value": "The operation could not be completed. Please try again. Your saved reading data is retained."
+    },
+    {
+      "name": "search_books",
+      "value": "Search Books…"
+    },
+    {
+      "name": "clear_search",
+      "value": "Clear search"
+    },
+    {
+      "name": "dismiss",
+      "value": "Dismiss"
+    },
+    {
+      "name": "view_options",
+      "value": "View"
+    },
+    {
+      "name": "view_grid",
+      "value": "Grid"
+    },
+    {
+      "name": "view_list",
+      "value": "List"
+    },
+    {
+      "name": "sort_recent",
+      "value": "Recently opened"
+    },
+    {
+      "name": "sort_title",
+      "value": "Title"
+    },
+    {
+      "name": "no_results",
+      "value": "No matching books"
+    },
+    {
+      "name": "font_layout",
+      "value": "Font & Layout"
+    },
+    {
+      "name": "theme",
+      "value": "Theme"
+    },
+    {
+      "name": "integrations",
+      "value": "Integrations"
+    },
+    {
+      "name": "about",
+      "value": "About"
+    },
+    {
+      "name": "preview",
+      "value": "PREVIEW"
+    },
+    {
+      "name": "preview_text",
+      "value": "A book is a dream that you hold in your hands."
+    },
+    {
+      "name": "decrease_font",
+      "value": "Decrease font size"
+    },
+    {
+      "name": "increase_font",
+      "value": "Increase font size"
+    },
+    {
+      "name": "opening",
+      "value": "Opening book…"
+    },
+    {
+      "name": "error_import_read_failed",
+      "value": "The EPUB could not be read from your device. Select the file again."
+    },
+    {
+      "name": "error_import_write_failed",
+      "value": "The EPUB could not be saved. Check available device storage."
+    },
+    {
+      "name": "error_book_not_found",
+      "value": "The local book file could not be found. Import the EPUB again."
     }
   ]
 }

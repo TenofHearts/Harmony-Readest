@@ -11,7 +11,7 @@ await build({
   define: { __READER_TEST__: String(testing) },
   alias: { 'foliate-js': path.resolve('vendor/foliate-js') },
   plugins: [{ name: 'epub-only', setup(b) {
-    b.onResolve({ filter: /\/vendor\/zip\.js$/ }, () => ({ path: path.resolve('node_modules/@zip.js/zip.js/index.js') }));
+    b.onResolve({ filter: /\/vendor\/zip\.js$/ }, () => ({ path: path.resolve('node_modules/@zip.js/zip.js/index-native.js') }));
     b.onResolve({ filter: /^\.\/(pdf|mobi|fb2|comic-book|fixed-layout)\.js$|\/vendor\/fflate\.js$/ },
       () => ({ path: 'unsupported', namespace: 'unsupported' }));
     b.onLoad({ filter: /.*/, namespace: 'unsupported' }, () => ({ contents:
