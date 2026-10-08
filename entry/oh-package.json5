@@ -1,0 +1,9 @@
+{
+  "name": "entry",
+  "version": "0.0.1",
+  "description": "Native HarmonyOS library and offline EPUB reader",
+  "main": "",
+  "author": "",
+  "license": "AGPL-3.0-or-later",
+  "dependencies": {}
+}

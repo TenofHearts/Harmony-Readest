@@ -1,0 +1,280 @@
+{
+  "string": [
+    {
+      "name": "module_desc",
+      "value": "HarmonyOS EPUB reader"
+    },
+    {
+      "name": "EntryAbility_desc",
+      "value": "Read and sync EPUB books"
+    },
+    {
+      "name": "EntryAbility_label",
+      "value": "HarmonyReadest"
+    },
+    {
+      "name": "library_subtitle",
+      "value": "Your books, at your own pace."
+    },
+    {
+      "name": "library",
+      "value": "Your library"
+    },
+    {
+      "name": "books",
+      "value": "books"
+    },
+    {
+      "name": "import",
+      "value": "Import EPUB"
+    },
+    {
+      "name": "settings",
+      "value": "Settings"
+    },
+    {
+      "name": "importing",
+      "value": "Importing and checking EPUB…"
+    },
+    {
+      "name": "empty_title",
+      "value": "A new chapter starts here"
+    },
+    {
+      "name": "empty_description",
+      "value": "Import an EPUB from your device. Your library and reading position are saved offline."
+    },
+    {
+      "name": "import_first",
+      "value": "Import your first book"
+    },
+    {
+      "name": "unknown_author",
+      "value": "Unknown author"
+    },
+    {
+      "name": "offline_footer",
+      "value": "Offline first · EPUB · KoSync"
+    },
+    {
+      "name": "kosync_title",
+      "value": "KOReader progress sync"
+    },
+    {
+      "name": "kosync_description",
+      "value": "Use the same server, account, and EPUB in Readest. KoSync shares reading positions; import books separately."
+    },
+    {
+      "name": "server_url",
+      "value": "Server URL (HTTPS)"
+    },
+    {
+      "name": "username",
+      "value": "Username"
+    },
+    {
+      "name": "password",
+      "value": "Password"
+    },
+    {
+      "name": "password_unchanged",
+      "value": "Leave empty to keep saved password"
+    },
+    {
+      "name": "device_name",
+      "value": "Device name"
+    },
+    {
+      "name": "auto_sync",
+      "value": "Enable progress sync"
+    },
+    {
+      "name": "newer_wins",
+      "value": "The newer position wins. Missing or tied timestamps require a choice. Keep device clocks accurate."
+    },
+    {
+      "name": "connect_save",
+      "value": "Test connection & save"
+    },
+    {
+      "name": "sync_status",
+      "value": "Sync status"
+    },
+    {
+      "name": "disconnect",
+      "value": "Disconnect and forget credentials"
+    },
+    {
+      "name": "appearance",
+      "value": "Reading appearance"
+    },
+    {
+      "name": "font_size",
+      "value": "Font size"
+    },
+    {
+      "name": "line_height",
+      "value": "Line spacing"
+    },
+    {
+      "name": "theme_light",
+      "value": "Light"
+    },
+    {
+      "name": "theme_sepia",
+      "value": "Sepia"
+    },
+    {
+      "name": "theme_dark",
+      "value": "Dark"
+    },
+    {
+      "name": "about_description",
+      "value": "HarmonyReadest 0.1 · Built for HarmonyOS with the Readest/Foliate reader engine. AGPL-3.0-or-later. Official Readest cloud sync is planned for a later release."
+    },
+    {
+      "name": "contents",
+      "value": "Contents"
+    },
+    {
+      "name": "reading",
+      "value": "Reading"
+    },
+    {
+      "name": "pull",
+      "value": "Pull"
+    },
+    {
+      "name": "push",
+      "value": "Push"
+    },
+    {
+      "name": "conflict_title",
+      "value": "Choose a reading position"
+    },
+    {
+      "name": "conflict_description",
+      "value": "These positions differ and their times cannot be ordered. Automatic upload is paused until you choose."
+    },
+    {
+      "name": "local",
+      "value": "Local"
+    },
+    {
+      "name": "remote",
+      "value": "Server"
+    },
+    {
+      "name": "keep_local",
+      "value": "Keep local"
+    },
+    {
+      "name": "use_remote",
+      "value": "Use server"
+    },
+    {
+      "name": "remove_description",
+      "value": "Remove this book and its local reading data?"
+    },
+    {
+      "name": "cancel",
+      "value": "Cancel"
+    },
+    {
+      "name": "remove",
+      "value": "Remove"
+    },
+    {
+      "name": "status_idle",
+      "value": "Offline ready"
+    },
+    {
+      "name": "status_connected",
+      "value": "Connected"
+    },
+    {
+      "name": "status_checking",
+      "value": "Checking progress…"
+    },
+    {
+      "name": "status_conflict",
+      "value": "Choose a position"
+    },
+    {
+      "name": "status_synced",
+      "value": "Progress synced"
+    },
+    {
+      "name": "status_pending",
+      "value": "Progress saved locally"
+    },
+    {
+      "name": "status_error",
+      "value": "Sync needs attention"
+    },
+    {
+      "name": "error_auth_failed",
+      "value": "Check your username and password."
+    },
+    {
+      "name": "error_https_required",
+      "value": "Enter a valid HTTPS server URL."
+    },
+    {
+      "name": "error_not_kosync",
+      "value": "This URL did not return a KoSync JSON response."
+    },
+    {
+      "name": "error_credentials_required",
+      "value": "Enter a username and password."
+    },
+    {
+      "name": "error_credentials_unavailable",
+      "value": "Saved credentials could not be decrypted. Connect again."
+    },
+    {
+      "name": "error_duplicate_book",
+      "value": "This EPUB is already in your library."
+    },
+    {
+      "name": "error_invalid_epub",
+      "value": "This file is not a valid EPUB."
+    },
+    {
+      "name": "error_drm_or_encrypted",
+      "value": "Encrypted or DRM-protected EPUBs are not supported."
+    },
+    {
+      "name": "error_fixed_layout_unsupported",
+      "value": "Fixed-layout EPUBs are not supported in this release."
+    },
+    {
+      "name": "error_book_too_large",
+      "value": "The book is empty or exceeds the supported size (128 MB compressed / 512 MB expanded)."
+    },
+    {
+      "name": "error_unresolved_position",
+      "value": "The server position could not be restored. Automatic upload is paused. Check that both apps use the same EPUB, or explicitly push your local position."
+    },
+    {
+      "name": "error_import_timeout",
+      "value": "Import timed out. Try a smaller EPUB."
+    },
+    {
+      "name": "error_reader_timeout",
+      "value": "The reader did not restore the position in time."
+    },
+    {
+      "name": "error_server_error",
+      "value": "The sync server returned an error. Retry later."
+    },
+    {
+      "name": "error_invalid_progress",
+      "value": "The server returned an invalid reading position."
+    },
+    {
+      "name": "error_generic",
+      "value": "The operation failed. Your saved reading data is retained. Retry or check the connection."
+    }
+  ]
+}

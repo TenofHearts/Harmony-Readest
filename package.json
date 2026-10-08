@@ -1,0 +1,20 @@
+{
+  "name": "harmonyreadest-reader",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "license": "AGPL-3.0-or-later",
+  "scripts": {
+    "build:reader": "node scripts/build-reader.mjs",
+    "test": "node --test tests/*.test.mjs",
+    "test:browser": "node scripts/build-reader.mjs --test && node tests/reader.browser.mjs"
+  },
+  "dependencies": {
+    "@zip.js/zip.js": "2.8.26",
+    "js-md5": "0.8.3"
+  },
+  "devDependencies": {
+    "esbuild": "0.25.12",
+    "playwright": "1.56.1"
+  }
+}

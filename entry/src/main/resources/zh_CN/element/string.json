@@ -1,0 +1,280 @@
+{
+  "string": [
+    {
+      "name": "module_desc",
+      "value": "鸿蒙 EPUB 阅读器"
+    },
+    {
+      "name": "EntryAbility_desc",
+      "value": "阅读 EPUB 电子书并同步进度"
+    },
+    {
+      "name": "EntryAbility_label",
+      "value": "HarmonyReadest"
+    },
+    {
+      "name": "library_subtitle",
+      "value": "随时翻开，自在阅读。"
+    },
+    {
+      "name": "library",
+      "value": "我的书架"
+    },
+    {
+      "name": "books",
+      "value": "本书"
+    },
+    {
+      "name": "import",
+      "value": "导入 EPUB"
+    },
+    {
+      "name": "settings",
+      "value": "设置"
+    },
+    {
+      "name": "importing",
+      "value": "正在导入并检查 EPUB…"
+    },
+    {
+      "name": "empty_title",
+      "value": "从这里翻开新的一页"
+    },
+    {
+      "name": "empty_description",
+      "value": "从设备导入 EPUB。书架和阅读位置会保存在本地，离线也能阅读。"
+    },
+    {
+      "name": "import_first",
+      "value": "导入第一本书"
+    },
+    {
+      "name": "unknown_author",
+      "value": "未知作者"
+    },
+    {
+      "name": "offline_footer",
+      "value": "离线优先 · EPUB · KoSync"
+    },
+    {
+      "name": "kosync_title",
+      "value": "KOReader 进度同步"
+    },
+    {
+      "name": "kosync_description",
+      "value": "请在 Readest 中使用相同的服务器、账号和 EPUB 文件。KoSync 只同步阅读位置，书籍需分别导入。"
+    },
+    {
+      "name": "server_url",
+      "value": "服务器地址（HTTPS）"
+    },
+    {
+      "name": "username",
+      "value": "用户名"
+    },
+    {
+      "name": "password",
+      "value": "密码"
+    },
+    {
+      "name": "password_unchanged",
+      "value": "留空以保留已保存的密码"
+    },
+    {
+      "name": "device_name",
+      "value": "设备名称"
+    },
+    {
+      "name": "auto_sync",
+      "value": "启用进度同步"
+    },
+    {
+      "name": "newer_wins",
+      "value": "默认采用时间较新的位置。时间缺失或相同时会询问保留哪一个，请保持设备时间准确。"
+    },
+    {
+      "name": "connect_save",
+      "value": "测试连接并保存"
+    },
+    {
+      "name": "sync_status",
+      "value": "同步状态"
+    },
+    {
+      "name": "disconnect",
+      "value": "断开连接并清除凭据"
+    },
+    {
+      "name": "appearance",
+      "value": "阅读样式"
+    },
+    {
+      "name": "font_size",
+      "value": "字号"
+    },
+    {
+      "name": "line_height",
+      "value": "行距"
+    },
+    {
+      "name": "theme_light",
+      "value": "浅色"
+    },
+    {
+      "name": "theme_sepia",
+      "value": "护眼"
+    },
+    {
+      "name": "theme_dark",
+      "value": "深色"
+    },
+    {
+      "name": "about_description",
+      "value": "HarmonyReadest 0.1 · 基于 Readest/Foliate 引擎的鸿蒙阅读器。AGPL-3.0-or-later。官方 Readest 云同步将在后续版本加入。"
+    },
+    {
+      "name": "contents",
+      "value": "目录"
+    },
+    {
+      "name": "reading",
+      "value": "阅读中"
+    },
+    {
+      "name": "pull",
+      "value": "拉取"
+    },
+    {
+      "name": "push",
+      "value": "推送"
+    },
+    {
+      "name": "conflict_title",
+      "value": "选择阅读位置"
+    },
+    {
+      "name": "conflict_description",
+      "value": "两个位置不同，且无法按时间确定先后。请选择要保留的位置，自动上传已暂停。"
+    },
+    {
+      "name": "local",
+      "value": "本地"
+    },
+    {
+      "name": "remote",
+      "value": "服务器"
+    },
+    {
+      "name": "keep_local",
+      "value": "保留本地"
+    },
+    {
+      "name": "use_remote",
+      "value": "采用服务器"
+    },
+    {
+      "name": "remove_description",
+      "value": "移除此书和本地阅读记录？"
+    },
+    {
+      "name": "cancel",
+      "value": "取消"
+    },
+    {
+      "name": "remove",
+      "value": "移除"
+    },
+    {
+      "name": "status_idle",
+      "value": "离线就绪"
+    },
+    {
+      "name": "status_connected",
+      "value": "已连接"
+    },
+    {
+      "name": "status_checking",
+      "value": "正在检查进度…"
+    },
+    {
+      "name": "status_conflict",
+      "value": "请选择位置"
+    },
+    {
+      "name": "status_synced",
+      "value": "进度已同步"
+    },
+    {
+      "name": "status_pending",
+      "value": "进度已保存到本地"
+    },
+    {
+      "name": "status_error",
+      "value": "同步需处理"
+    },
+    {
+      "name": "error_auth_failed",
+      "value": "请检查用户名和密码。"
+    },
+    {
+      "name": "error_https_required",
+      "value": "请输入有效的 HTTPS 服务器地址。"
+    },
+    {
+      "name": "error_not_kosync",
+      "value": "该地址未返回 KoSync JSON 响应。"
+    },
+    {
+      "name": "error_credentials_required",
+      "value": "请输入用户名和密码。"
+    },
+    {
+      "name": "error_credentials_unavailable",
+      "value": "无法解密已保存的凭据，请重新连接。"
+    },
+    {
+      "name": "error_duplicate_book",
+      "value": "此 EPUB 已在书架中。"
+    },
+    {
+      "name": "error_invalid_epub",
+      "value": "该文件不是有效的 EPUB。"
+    },
+    {
+      "name": "error_drm_or_encrypted",
+      "value": "暂不支持加密或受 DRM 保护的 EPUB。"
+    },
+    {
+      "name": "error_fixed_layout_unsupported",
+      "value": "此版本暂不支持固定布局的 EPUB。"
+    },
+    {
+      "name": "error_book_too_large",
+      "value": "书籍为空或超过支持大小（压缩后 128 MB / 解压后 512 MB）。"
+    },
+    {
+      "name": "error_unresolved_position",
+      "value": "无法恢复服务器位置，已暂停自动上传。请检查两端是否使用相同 EPUB，或手动推送本地位置。"
+    },
+    {
+      "name": "error_import_timeout",
+      "value": "导入超时，请尝试较小的 EPUB。"
+    },
+    {
+      "name": "error_reader_timeout",
+      "value": "阅读器恢复位置超时。"
+    },
+    {
+      "name": "error_server_error",
+      "value": "同步服务器返回错误，请稍后重试。"
+    },
+    {
+      "name": "error_invalid_progress",
+      "value": "服务器返回的阅读位置无效。"
+    },
+    {
+      "name": "error_generic",
+      "value": "操作失败，已保存的阅读记录仍然保留。请重试或检查网络连接。"
+    }
+  ]
+}
