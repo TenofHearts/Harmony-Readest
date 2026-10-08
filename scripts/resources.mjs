@@ -1,16 +1,26 @@
 import { mkdir, writeFile } from 'node:fs/promises';
 const strings = {
-  module_desc: ['HarmonyOS EPUB reader', '鸿蒙 EPUB 阅读器'], EntryAbility_desc: ['Read and sync EPUB books', '阅读 EPUB 电子书并同步进度'], EntryAbility_label: ['HarmonyReadest', 'HarmonyReadest'],
+  module_desc: ['HarmonyOS EPUB reader', '鸿蒙 EPUB 阅读器'], EntryAbility_desc: ['Read and sync EPUB books', '阅读 EPUB 电子书并同步进度'], EntryAbility_label: ['Readest', 'Readest'],
   library_subtitle: ['Your books, at your own pace.', '随时翻开，自在阅读。'], library: ['Bookshelf', '书架'], books: ['books', '本书'], import: ['Import EPUB', '导入 EPUB'],
   settings: ['Settings', '设置'], importing: ['Importing and checking EPUB…', '正在导入并检查 EPUB…'], empty_title: ['Your library is empty', '书架还是空的'],
   empty_description: ['Add books from your device to start reading. No internet connection required.', '从设备添加书籍，即可开始阅读。无需网络连接。'],
   import_first: ['Import your first book', '导入第一本书'], unknown_author: ['Unknown author', '未知作者'], offline_footer: ['Offline first · EPUB · KoSync', '离线优先 · EPUB · KoSync'],
-  kosync_title: ['KOReader progress sync', 'KOReader 进度同步'], kosync_description: ['Use the same server, account, and EPUB in Readest. KoSync shares reading positions; import books separately.', '请在 Readest 中使用相同的服务器、账号和 EPUB 文件。KoSync 只同步阅读位置，书籍需分别导入。'],
+  kosync_title: ['KOReader Sync', 'KOReader 同步'], kosync_description: ['Synchronize reading progress using the same server, account, and EPUB on each device. Book files are managed separately.', '在各设备上使用相同的服务器、账号和 EPUB 文件同步阅读进度。书籍文件需分别导入。'],
+  kosync_connect_description: ['Connect to your KOReader Sync server.', '连接到您的 KOReader 同步服务器。'],
+  reading_sync: ['Reading Sync', '阅读同步'], connected_as: ['Connected as {account}', '已连接账号：{account}'],
+  not_connected: ['Not connected', '未连接'], sync_paused: ['Sync paused', '同步已暂停'],
+  sync_strategy: ['Sync Strategy', '同步策略'], ask_on_conflict: ['Ask on conflict', '冲突时询问'], checksum_method: ['Checksum Method', '校验方式'], file_content: ['File Content', '文件内容'],
+  expand: ['Expand', '展开'], collapse: ['Collapse', '收起'],
   server_url: ['Server URL (HTTPS)', '服务器地址（HTTPS）'], username: ['Username', '用户名'], password: ['Password', '密码'], password_unchanged: ['Leave empty to keep saved password', '留空以保留已保存的密码'],
   device_name: ['Device name', '设备名称'], auto_sync: ['Enable progress sync', '启用进度同步'], newer_wins: ['The newer position wins. Missing or tied timestamps require a choice. Keep device clocks accurate.', '默认采用时间较新的位置。时间缺失或相同时会询问保留哪一个，请保持设备时间准确。'],
-  connect_save: ['Test connection & save', '测试连接并保存'], sync_status: ['Sync status', '同步状态'], disconnect: ['Disconnect and forget credentials', '断开连接并清除凭据'],
+  connect_save: ['Connect', '连接'], sync_status: ['Sync status', '同步状态'], disconnect: ['Disconnect', '断开连接'],
   appearance: ['Reading appearance', '阅读样式'], font_size: ['Font size', '字号'], line_height: ['Line spacing', '行距'], theme_light: ['Light', '浅色'], theme_sepia: ['Sepia', '护眼'], theme_dark: ['Dark', '深色'],
-  about_description: ['HarmonyReadest 0.1 · Built for HarmonyOS with the Readest/Foliate reader engine. AGPL-3.0-or-later. Official Readest cloud sync is planned for a later release.', 'HarmonyReadest 0.1 · 基于 Readest/Foliate 引擎的鸿蒙阅读器。AGPL-3.0-or-later。官方 Readest 云同步将在后续版本加入。'],
+  theme_system: ['System', '跟随系统'], theme_mode: ['Theme Mode', '主题模式'], theme_color: ['Theme Color', '主题颜色'], theme_reader: ['Reader', '阅读器'],
+  scheme_default: ['Default', '默认'], scheme_gray: ['Gray', '灰色'], scheme_sepia: ['Sepia', '褐色'], scheme_grass: ['Grass', '草绿'],
+  scheme_cherry: ['Cherry', '樱桃'], scheme_sky: ['Sky', '天空'], scheme_solarized: ['Solarized', 'Solarized'], scheme_gruvbox: ['Gruvbox', 'Gruvbox'],
+  scheme_nord: ['Nord', 'Nord'], scheme_contrast: ['Contrast', '高对比度'], scheme_sunset: ['Sunset', '日落'],
+  about_description: ['Readest for HarmonyOS offers a focused EPUB reading experience with an organized bookshelf, customizable reading appearance, and cross-device reading progress synchronization.', 'Readest 鸿蒙版为您提供简洁、专注的 EPUB 阅读体验，支持书籍管理、阅读样式设置与跨设备阅读进度同步。'],
+  about_version: ['Version 0.0.4 · HarmonyOS', '版本 0.0.4 · HarmonyOS'], about_license: ['Licensed under AGPL-3.0-or-later', '遵循 AGPL-3.0-or-later 开源许可'],
   contents: ['Contents', '目录'], reading: ['Reading', '阅读中'], sync_now: ['Send progress', '发送进度'], check_remote: ['Check remote', '检查远端'], conflict_title: ['Choose a reading position', '选择阅读位置'],
   conflict_description: ['Reading progress differs between devices. Choose where to continue; automatic uploads are paused until you choose.', '设备之间的阅读位置不同。请选择要继续阅读的位置，自动上传已暂停。'], local: ['This device', '此设备'], remote: ['Other device', '其他设备'], keep_local: ['Continue here', '在此继续'], use_remote: ['Use other position', '采用另一位置'],
   remove_description: ['Remove this book and its local reading data?', '移除此书和本地阅读记录？'], cancel: ['Cancel', '取消'], remove: ['Remove', '移除'],
@@ -28,9 +38,12 @@ const strings = {
   error_generic: ['The operation could not be completed. Please try again. Your saved reading data is retained.', '操作未能完成，请重试。已保存的阅读记录仍然保留。'],
   search_books: ['Search Books…', '搜索书籍…'], clear_search: ['Clear search', '清除搜索'], dismiss: ['Dismiss', '关闭'],
   view_options: ['View', '显示'], view_grid: ['Grid', '网格'], view_list: ['List', '列表'], sort_recent: ['Recently opened', '最近阅读'], sort_title: ['Title', '书名'],
-  no_results: ['No matching books', '没有找到匹配的书籍'], font_layout: ['Font & Layout', '字体与布局'], theme: ['Theme', '主题'], integrations: ['Integrations', '集成'], about: ['About', '关于'],
+  no_results: ['No matching books', '没有找到匹配的书籍'], font_layout: ['Font & Layout', '字体与布局'], theme: ['Theme', '主题'], integrations: ['Sync', '同步'], about: ['About', '关于'],
   preview: ['PREVIEW', '预览'], preview_text: ['A book is a dream that you hold in your hands.', '书是握在手中的梦。翻开一页，走进另一个世界。'],
   decrease_font: ['Decrease font size', '减小字号'], increase_font: ['Increase font size', '增大字号'], opening: ['Opening book…', '正在打开书籍…'],
+  add_book: ['Add a book', '添加书籍'], reading_progress: ['Reading progress', '阅读进度'],
+  previous_page: ['Previous page', '上一页'], next_page: ['Next page', '下一页'], previous_section: ['Previous section', '上一章节'], next_section: ['Next section', '下一章节'],
+  go_back: ['Go back', '后退'], go_forward: ['Go forward', '前进'],
   error_import_read_failed: ['The EPUB could not be read from your device. Select the file again.', '无法读取设备上的 EPUB 文件，请重新选择文件。'],
   error_import_write_failed: ['The EPUB could not be saved. Check available device storage.', '无法保存 EPUB 文件，请检查设备存储空间。'],
   error_book_not_found: ['The local book file could not be found. Import the EPUB again.', '找不到本地书籍文件，请重新导入 EPUB。']
@@ -40,4 +53,4 @@ for (const [locale, index] of [['base', 0], ['zh_CN', 1]]) {
   await mkdir(dir, { recursive: true });
   await writeFile(`${dir}/string.json`, JSON.stringify({ string: Object.entries(strings).map(([name, values]) => ({ name, value: values[index] })) }, null, 2) + '\n');
 }
-await writeFile('AppScope/resources/base/element/string.json', JSON.stringify({ string: [{ name: 'app_name', value: 'HarmonyReadest' }] }, null, 2) + '\n');
+await writeFile('AppScope/resources/base/element/string.json', JSON.stringify({ string: [{ name: 'app_name', value: 'Readest' }] }, null, 2) + '\n');

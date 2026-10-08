@@ -2,7 +2,8 @@ import { common } from '@kit.AbilityKit';
 import { relationalStore, preferences } from '@kit.ArkData';
 import { fileIo as fs } from '@kit.CoreFileKit';
 import { util } from '@kit.ArkTS';
-import { BookRecord, ReaderSettings } from '../core/Models';
+import { BookRecord, ReaderSettings, ThemeSettings } from '../core/Models';
+import { migrateAppearance, migrateTheme, StoredAppearance } from '../core/ThemePolicy';
 import { removeLocalFile } from './LocalFiles';
 
 export class Repository {
@@ -46,7 +47,17 @@ export class Repository {
 
   async settings(): Promise<ReaderSettings> {
     const text = await this.prefs!.get('appearance', '') as string;
-    return text ? JSON.parse(text) as ReaderSettings : new ReaderSettings();
+    return text ? migrateAppearance(JSON.parse(text) as StoredAppearance) : new ReaderSettings();
+  }
+
+  async librarySettings(): Promise<ThemeSettings> {
+    const saved = await this.prefs!.get('library_theme', '') as string;
+    const legacy = saved || await this.prefs!.get('appearance', '') as string;
+    return legacy ? migrateTheme(JSON.parse(legacy) as StoredAppearance) : new ThemeSettings();
+  }
+
+  async saveLibrarySettings(settings: ThemeSettings): Promise<void> {
+    await this.prefs!.put('library_theme', JSON.stringify(settings)); await this.prefs!.flush();
   }
 
   async saveSettings(settings: ReaderSettings): Promise<void> {

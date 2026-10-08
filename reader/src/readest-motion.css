@@ -1,0 +1,37 @@
+/* Readest f74a19d39e2badf81125f42a85c54adae26c7048, AGPL-3.0-or-later.
+ * Resolved Tailwind rules from HeaderBar.tsx, FooterBar.tsx and
+ * footerbar/NavigationPanel.tsx. Keep upstream timings/easing/properties.
+ * Header: transition-[opacity,margin-top] duration-300.
+ * Footer: transition-[opacity,transform] duration-300.
+ * Panels: transition-all, translate-y-full, ease-in / ease-out.
+ */
+.header-bar {
+  transition-property: opacity, margin-top;
+  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+  transition-duration: 300ms;
+}
+.header-bar[aria-hidden='true'] { opacity: 0; pointer-events: none; }
+.footer-bar {
+  transition-property: opacity, transform;
+  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+  transition-duration: 300ms;
+}
+.footer-bar[aria-hidden='false'] { opacity: 1; transform: translateY(0); }
+.footer-bar[aria-hidden='true'] { opacity: 0; transform: translateY(100%); pointer-events: none; }
+.footer-panel {
+  transition-property: all;
+  transition-duration: 150ms;
+  transition-timing-function: cubic-bezier(0, 0, 0.2, 1);
+  transform: translateY(0);
+}
+.footer-panel[aria-hidden='true'] {
+  pointer-events: none; visibility: hidden; transform: translateY(100%);
+  overflow: hidden; transition-timing-function: cubic-bezier(0.4, 0, 1, 1);
+}
+@media (min-width: 640px) {
+  .footer-bar[aria-hidden='true'] { transform: translateY(0); }
+}
+/* Accessibility adapter: users requesting reduced motion get settled bars. */
+@media (prefers-reduced-motion: reduce) {
+  .header-bar, .footer-bar, .footer-panel { transition: none; }
+}

@@ -1,9 +1,10 @@
-import { common } from '@kit.AbilityKit';
+import { common, ConfigurationConstant } from '@kit.AbilityKit';
 import { picker } from '@kit.CoreFileKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { webview } from '@kit.ArkWeb';
 import { connection } from '@kit.NetworkKit';
-import { BookRecord, KoSyncSettings, ReaderCommand, ReaderEvent, ReaderSettings, RemoteProgress, ReadingPosition } from '../core/Models';
+import { BookRecord, KoSyncSettings, ReaderCommand, ReaderEvent, ReaderSettings, ThemeSettings, RemoteProgress, ReadingPosition } from '../core/Models';
+import { isThemeMode, isThemeColor } from '../core/Themes';
 import { KoSyncClient, normalizeServer } from '../core/KoSyncClient';
 import { ProgressCoordinator, SyncHooks } from '../core/ProgressCoordinator';
 import { isCurrentSession } from '../core/SyncPolicy';
@@ -19,6 +20,8 @@ export class AppController {
   books: BookRecord[] = [];
   activeBook?: BookRecord;
   appearance: ReaderSettings = new ReaderSettings();
+  libraryTheme: ThemeSettings = new ThemeSettings();
+  systemDark: boolean = false;
   config: KoSyncSettings = new KoSyncSettings();
   status: string = 'idle';
   error: string = '';
@@ -29,6 +32,7 @@ export class AppController {
   initialized: boolean = false;
   importing: boolean = false;
   changed: () => void = () => {};
+  readerAction: (action: string) => void = () => {};
   reader?: ReaderGateway;
   private store: Repository = new Repository();
   private vault: CredentialVault = new CredentialVault();
@@ -46,11 +50,17 @@ export class AppController {
   private events: Promise<void> = Promise.resolve();
   private network?: connection.NetConnection;
 
-  constructor(context: common.UIAbilityContext) { this.context = context; AppController.current = this; }
+  constructor(context: common.UIAbilityContext) {
+    this.context = context; AppController.current = this;
+    this.systemDark = context.config?.colorMode === ConfigurationConstant.ColorMode.COLOR_MODE_DARK;
+  }
 
   async init(): Promise<void> {
     await this.store.init(this.context); await this.vault.init(this.context);
     this.books = await this.store.list(); this.appearance = await this.store.settings();
+    this.libraryTheme = await this.store.librarySettings();
+    // Commit both scopes before any reader-ready callback can replace legacy data.
+    await this.store.saveLibrarySettings(this.libraryTheme);
     try { this.config = await this.vault.load(); } catch { this.error = 'CREDENTIALS_UNAVAILABLE'; }
     this.config.deviceId = await this.store.deviceId();
     try {
@@ -99,6 +109,19 @@ export class AppController {
     await this.vault.clear();
     this.config = new KoSyncSettings(); this.config.deviceId = await this.store.deviceId();
     this.status = 'idle'; this.conflict = undefined; this.changed();
+  }
+
+  async updateSyncOptions(enabled: boolean, deviceName: string): Promise<void> {
+    if (!this.config.userkey) return;
+    // Account options change locally; saved credentials do not need a new login.
+    const config = new KoSyncSettings();
+    config.serverUrl = this.config.serverUrl; config.username = this.config.username;
+    config.password = this.config.password; config.userkey = this.config.userkey; config.basicKey = this.config.basicKey;
+    config.deviceId = this.config.deviceId; config.deviceName = deviceName.trim() || 'Readest'; config.enabled = enabled;
+    await this.vault.save(config);
+    this.epoch++; this.config = config; this.coordinator = undefined;
+    if (!enabled) clearTimeout(this.debounce);
+    this.changed();
   }
 
   async importBooks(): Promise<void> {
@@ -193,8 +216,20 @@ export class AppController {
 
   async setAppearance(settings: ReaderSettings): Promise<void> {
     this.appearance = settings; await this.store.saveSettings(settings);
-    const command = this.command('appearance'); command.settings = settings;
+    const command = this.command('appearance'); command.settings = settings; command.systemDark = this.systemDark;
     if (this.reader?.ready) await this.reader.send(command); this.changed();
+  }
+
+  async setLibraryTheme(settings: ThemeSettings): Promise<void> {
+    if (!isThemeMode(settings.themeMode) || !isThemeColor(settings.themeColor)) return;
+    this.libraryTheme = settings; await this.store.saveLibrarySettings(settings); this.changed();
+  }
+
+  setSystemDark(dark: boolean): void {
+    this.systemDark = dark;
+    const command = this.command('systemTheme'); command.systemDark = dark;
+    if (this.reader?.ready) this.reader.send(command).catch(() => {});
+    this.changed();
   }
 
   private async handle(event: ReaderEvent): Promise<void> {
@@ -237,6 +272,15 @@ export class AppController {
       this.busy = false; this.blocked = true; throw error;
     } else if (event.type === 'closed') { this.closeResolve?.(); this.closeResolve = undefined; }
     else if (event.type === 'toggleControls') this.controls = !this.controls;
+    else if (event.type === 'readerAction' && event.action && ['library', 'settings', 'upload', 'reconcile'].includes(event.action)) {
+      this.readerAction(event.action);
+    } else if (event.type === 'appearanceChanged' && event.settings) {
+      const settings = event.settings;
+      if (!Number.isFinite(settings.fontSize) || settings.fontSize < 12 || settings.fontSize > 40 ||
+        !Number.isFinite(settings.lineHeight) || settings.lineHeight < 1.2 || settings.lineHeight > 2.4 ||
+        !isThemeMode(settings.themeMode) || !isThemeColor(settings.themeColor)) return;
+      await this.setAppearance(settings);
+    }
     this.changed();
   }
 

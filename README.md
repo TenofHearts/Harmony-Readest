@@ -1,13 +1,17 @@
-# HarmonyReadest
+# Readest for HarmonyOS
 
 A new HarmonyOS app with a native ArkUI library and settings, and an offline EPUB reader built from Readest's Foliate engine. The initial release synchronizes reading positions with Readest through a shared KoSync server.
 
-The bookshelf and settings follow Readest's compact search toolbar, cover grid, tabbed settings and neutral boxed lists. EPUB import and reading work without an internet connection; wide screens show two reading columns and phones show one.
+The UI follows the pinned Readest design: a compact shelf toolbar, cover-sized import tile, floating tabbed settings, neutral boxed lists, and sync-source choice cards containing their own chapter and progress. Reader chrome uses a compact title bar, expandable phone panels and a slim desktop progress toolbar. Bar transitions reuse Readest's CSS declarations; page turns use its vendored Foliate animation. EPUB import and reading work without an internet connection; wide screens show two reading columns and phones show one.
+
+Sync settings use collapsible service cards. Once connected, KOReader shows the saved account, sync options and Disconnect; username/password fields appear only when disconnected. Unsupported methods are hidden. The About page describes current reading features and displays the app version and license.
 
 ## First release
 
 - Import reflowable EPUBs, extract covers and metadata, and resume saved positions offline.
-- Use the table of contents, tap/swipe page turns, progress slider, font size, line spacing, and light/sepia/dark themes.
+- Use the table of contents, tap/swipe page turns, progress slider, font size, and line spacing.
+- Choose Readest's 11 built-in color schemes with Light, Dark, or System mode independently for the shelf and reader. Existing theme and typography preferences migrate on upgrade. Custom schemes and other theme features remain deferred.
+- Fill the screen with a themed background, including the status and gesture areas, while keeping controls and text clear of system indicators. The launcher and splash screen use Readest's official icon artwork; the displayed app name is Readest.
 - Configure an existing KoSync account and HTTPS server. Like Readest's prompt mode, check remote progress on book open and app return, and let the user choose when positions differ. Uploads pause until that choice. Reading changes upload after five seconds, including backwards reading; manual Send progress and Check remote are available.
 - Prefer the newer local reading-change time or server update time. Missing/tied times require a choice. An unresolvable remote XPointer pauses automatic uploads.
 - English and Simplified Chinese follow the system language.
@@ -29,7 +33,7 @@ npm ci
 ./scripts/build-hap.ps1 -DevEco 'C:\path\to\DevEco Studio'
 ```
 
-The script sets the SDK/JDK for the build process and runs Hvigor. A Hvigor hook builds all reader assets into `entry/src/main/resources/rawfile/reader` before packaging, including when using DevEco Studio's Run button after `npm ci`. No CDN or hosted reader is required. Vendored sources and the npm lockfile make normal builds independent of upstream changes.
+The script sets the SDK/JDK for the build process and runs Hvigor. A Hvigor hook builds all reader assets into `entry/src/main/resources/rawfile/reader` before packaging, including when using DevEco Studio's Run button after `npm ci`. The same build generates one shared native/web palette table from the pinned Readest `themes.ts` and copies the official icon assets. No CDN or hosted reader is required. Vendored sources and the npm lockfile make normal builds independent of upstream changes.
 
 Builds produce `entry/build/default/outputs/default/entry-default-unsigned.hap`. With a local signing profile configured in DevEco Studio, they also produce `entry-default-signed.hap`, which can run on a connected device or API 24 emulator. Signing credentials belong to the local development environment.
 

@@ -10,7 +10,7 @@
     },
     {
       "name": "EntryAbility_label",
-      "value": "HarmonyReadest"
+      "value": "Readest"
     },
     {
       "name": "library_subtitle",
@@ -58,11 +58,55 @@
     },
     {
       "name": "kosync_title",
-      "value": "KOReader 进度同步"
+      "value": "KOReader 同步"
     },
     {
       "name": "kosync_description",
-      "value": "请在 Readest 中使用相同的服务器、账号和 EPUB 文件。KoSync 只同步阅读位置，书籍需分别导入。"
+      "value": "在各设备上使用相同的服务器、账号和 EPUB 文件同步阅读进度。书籍文件需分别导入。"
+    },
+    {
+      "name": "kosync_connect_description",
+      "value": "连接到您的 KOReader 同步服务器。"
+    },
+    {
+      "name": "reading_sync",
+      "value": "阅读同步"
+    },
+    {
+      "name": "connected_as",
+      "value": "已连接账号：{account}"
+    },
+    {
+      "name": "not_connected",
+      "value": "未连接"
+    },
+    {
+      "name": "sync_paused",
+      "value": "同步已暂停"
+    },
+    {
+      "name": "sync_strategy",
+      "value": "同步策略"
+    },
+    {
+      "name": "ask_on_conflict",
+      "value": "冲突时询问"
+    },
+    {
+      "name": "checksum_method",
+      "value": "校验方式"
+    },
+    {
+      "name": "file_content",
+      "value": "文件内容"
+    },
+    {
+      "name": "expand",
+      "value": "展开"
+    },
+    {
+      "name": "collapse",
+      "value": "收起"
     },
     {
       "name": "server_url",
@@ -94,7 +138,7 @@
     },
     {
       "name": "connect_save",
-      "value": "测试连接并保存"
+      "value": "连接"
     },
     {
       "name": "sync_status",
@@ -102,7 +146,7 @@
     },
     {
       "name": "disconnect",
-      "value": "断开连接并清除凭据"
+      "value": "断开连接"
     },
     {
       "name": "appearance",
@@ -129,8 +173,76 @@
       "value": "深色"
     },
     {
+      "name": "theme_system",
+      "value": "跟随系统"
+    },
+    {
+      "name": "theme_mode",
+      "value": "主题模式"
+    },
+    {
+      "name": "theme_color",
+      "value": "主题颜色"
+    },
+    {
+      "name": "theme_reader",
+      "value": "阅读器"
+    },
+    {
+      "name": "scheme_default",
+      "value": "默认"
+    },
+    {
+      "name": "scheme_gray",
+      "value": "灰色"
+    },
+    {
+      "name": "scheme_sepia",
+      "value": "褐色"
+    },
+    {
+      "name": "scheme_grass",
+      "value": "草绿"
+    },
+    {
+      "name": "scheme_cherry",
+      "value": "樱桃"
+    },
+    {
+      "name": "scheme_sky",
+      "value": "天空"
+    },
+    {
+      "name": "scheme_solarized",
+      "value": "Solarized"
+    },
+    {
+      "name": "scheme_gruvbox",
+      "value": "Gruvbox"
+    },
+    {
+      "name": "scheme_nord",
+      "value": "Nord"
+    },
+    {
+      "name": "scheme_contrast",
+      "value": "高对比度"
+    },
+    {
+      "name": "scheme_sunset",
+      "value": "日落"
+    },
+    {
       "name": "about_description",
-      "value": "HarmonyReadest 0.1 · 基于 Readest/Foliate 引擎的鸿蒙阅读器。AGPL-3.0-or-later。官方 Readest 云同步将在后续版本加入。"
+      "value": "Readest 鸿蒙版为您提供简洁、专注的 EPUB 阅读体验，支持书籍管理、阅读样式设置与跨设备阅读进度同步。"
+    },
+    {
+      "name": "about_version",
+      "value": "版本 0.0.4 · HarmonyOS"
+    },
+    {
+      "name": "about_license",
+      "value": "遵循 AGPL-3.0-or-later 开源许可"
     },
     {
       "name": "contents",
@@ -338,7 +450,7 @@
     },
     {
       "name": "integrations",
-      "value": "集成"
+      "value": "同步"
     },
     {
       "name": "about",
@@ -363,6 +475,38 @@
     {
       "name": "opening",
       "value": "正在打开书籍…"
+    },
+    {
+      "name": "add_book",
+      "value": "添加书籍"
+    },
+    {
+      "name": "reading_progress",
+      "value": "阅读进度"
+    },
+    {
+      "name": "previous_page",
+      "value": "上一页"
+    },
+    {
+      "name": "next_page",
+      "value": "下一页"
+    },
+    {
+      "name": "previous_section",
+      "value": "上一章节"
+    },
+    {
+      "name": "next_section",
+      "value": "下一章节"
+    },
+    {
+      "name": "go_back",
+      "value": "后退"
+    },
+    {
+      "name": "go_forward",
+      "value": "前进"
     },
     {
       "name": "error_import_read_failed",

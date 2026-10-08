@@ -1,0 +1,60 @@
+:root { --reader-surface: #fff; --reader-inset: #f4f4f4; --reader-fg: #262626; --reader-muted: #737373; --reader-line: #e5e5e5; }
+#reader-chrome { position: fixed; inset: 0; pointer-events: none; z-index: 10; font: 14px system-ui, 'HarmonyOS Sans', sans-serif; color: var(--reader-fg); }
+#reader-chrome[hidden] { display: none; }
+#reader-chrome * { box-sizing: border-box; }
+#reader-chrome button { font: inherit; color: inherit; cursor: pointer; border: 0; background: transparent; }
+#reader-chrome button:disabled { opacity: .35; cursor: default; }
+#reader-chrome button:focus-visible, #reader-chrome input:focus-visible { outline: 2px solid var(--reader-fg); outline-offset: 2px; }
+#reader-chrome .icon-button { width: 44px; height: 44px; display: inline-flex; flex: 0 0 44px; justify-content: center; align-items: center; border-radius: 8px; }
+#reader-chrome .icon-button:hover, #reader-chrome button[aria-expanded='true'] { background: var(--reader-inset); }
+#reader-chrome .icon-button svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+#reader-chrome .header-bar { position: absolute; inset: 0 0 auto; height: 44px; background: var(--reader-surface); display: flex; align-items: center; padding: 0 8px; pointer-events: auto; box-shadow: 0 1px 2px #0000000d; }
+#reader-chrome .header-bar[aria-hidden='true'], #reader-chrome .footer-bar[aria-hidden='true'] { pointer-events: none; }
+#reader-chrome .header-title { font-size: 12px; font-weight: 600; text-align: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; min-width: 0; padding: 0 16px; }
+#reader-chrome .footer-bar { position: absolute; inset: auto 0 0; background: var(--reader-surface); border-top: 1px solid var(--reader-line); pointer-events: auto; box-shadow: 0 -1px 2px #0000000d; }
+#reader-chrome .mobile-tools { position: relative; z-index: 2; height: 64px; padding: 10px 24px; display: flex; justify-content: space-between; background: var(--reader-inset); }
+#reader-chrome .desktop-tools { display: none; height: 52px; padding: 0 16px; gap: 8px; align-items: center; }
+#reader-chrome .footer-panel { position: absolute; bottom: 64px; left: 0; width: 100%; padding: 24px 16px 16px; background: var(--reader-inset); border-top: 1px solid var(--reader-line); max-height: calc(100vh - 124px); overflow-y: auto; }
+#reader-chrome .panel-content { max-width: 640px; margin: auto; }
+#reader-chrome .panel-heading { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; font-size: 12px; font-weight: 600; }
+#reader-chrome .panel-heading span { flex: 1; }
+#reader-chrome .panel-heading .icon-button { width: 32px; height: 32px; flex-basis: 32px; }
+#reader-chrome .progress-caption { display: flex; justify-content: space-between; gap: 20px; font-size: 12px; color: var(--reader-muted); margin-bottom: 12px; }
+#reader-chrome .chapter-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#reader-chrome .navigation-actions { display: flex; justify-content: space-between; margin-top: 16px; }
+#reader-chrome input[type='range'] { accent-color: var(--reader-fg); width: 100%; min-width: 0; height: 28px; margin: 0; cursor: pointer; }
+#reader-chrome .desktop-tools input { flex: 1; }
+#reader-chrome .percentage { font-size: 12px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+#reader-chrome .settings-row { display: flex; align-items: center; gap: 12px; padding: 8px 0; }
+#reader-chrome .settings-row label { flex: 1; }
+#reader-chrome .settings-row output { min-width: 32px; text-align: center; }
+#reader-chrome .theme-options { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+#reader-chrome .theme-option { min-height: 80px; padding: 12px; border-radius: 8px; border: 2px solid transparent; display: flex; flex-direction: column; justify-content: end; align-items: center; gap: 4px; box-shadow: 0 4px 6px #0000001a; }
+#reader-chrome .theme-sample { font-size: 18px; font-weight: 700; }
+#reader-chrome .theme-name { font-size: 12px; font-weight: 600; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+#reader-chrome .theme-option[aria-pressed='true'] { border-color: currentColor; }
+#reader-chrome .theme-color-label { color: var(--reader-muted); font-size: 12px; margin: 16px 0 8px; }
+#reader-chrome .theme-modes { display: inline-flex; padding: 2px; background: var(--reader-line); border-radius: 24px; }
+#reader-chrome .theme-modes .icon-button { height: 36px; border-radius: 24px; }
+#reader-chrome .theme-modes [aria-checked='true'] { background: var(--reader-inset); box-shadow: 0 1px 2px #0000000d; }
+#reader-chrome .toc-item { display: block; width: 100%; text-align: start; padding: 14px 12px; border-bottom: 1px solid var(--reader-line); }
+#reader-chrome .toc-item:hover { background: var(--reader-surface); }
+#reader-chrome .view-menu { position: absolute; top: 52px; right: 12px; width: 240px; padding: 8px; border: 1px solid var(--reader-line); border-radius: 12px; background: var(--reader-surface); box-shadow: 0 8px 24px #0000001a; pointer-events: auto; }
+#reader-chrome .menu-action { display: flex; align-items: center; width: 100%; padding: 12px; border-radius: 6px; text-align: start; }
+#reader-chrome .menu-action:hover { background: var(--reader-inset); }
+#reader-chrome .sync-status { color: var(--reader-muted); font-size: 12px; padding: 12px; border-top: 1px solid var(--reader-line); margin-top: 4px; }
+#reader-chrome .desktop-only { display: none; }
+@media (min-width: 640px) {
+  #reader-chrome .desktop-only { display: inline-flex; }
+  #reader-chrome .header-title { position: absolute; left: 25%; right: 25%; pointer-events: none; }
+  #reader-chrome .header-end { margin-left: auto; }
+  #reader-chrome .mobile-tools { display: none; }
+  #reader-chrome .desktop-tools { display: flex; }
+  #reader-chrome .footer-panel { bottom: 52px; left: 50%; width: min(640px, 100%); margin-left: calc(min(640px, 100%) / -2); border: 1px solid var(--reader-line); border-radius: 12px 12px 0 0; }
+}
+/* The window fills the screen; only chrome reserves system/gesture insets. */
+#reader-chrome .header-bar { height: calc(44px + var(--safe-top, 0px)); padding-top: var(--safe-top, 0px); }
+#reader-chrome .footer-bar { padding-bottom: var(--safe-bottom, 0px); }
+#reader-chrome .footer-panel { bottom: calc(64px + var(--safe-bottom, 0px)); max-height: calc(100vh - 124px - var(--safe-top, 0px) - var(--safe-bottom, 0px)); }
+#reader-chrome .view-menu { top: calc(52px + var(--safe-top, 0px)); }
+@media (min-width: 640px) { #reader-chrome .footer-panel { bottom: calc(52px + var(--safe-bottom, 0px)); } }

@@ -37,10 +37,14 @@ export class BookRecord {
   toc: TocEntry[] = [];
 }
 
-export class ReaderSettings {
+export class ThemeSettings {
+  themeMode: string = 'auto';
+  themeColor: string = 'default';
+}
+
+export class ReaderSettings extends ThemeSettings {
   fontSize: number = 20;
   lineHeight: number = 1.7;
-  theme: string = 'light';
 }
 
 export class KoSyncSettings {
@@ -50,7 +54,7 @@ export class KoSyncSettings {
   userkey: string = '';
   basicKey: string = '';
   enabled: boolean = false;
-  deviceName: string = 'HarmonyReadest';
+  deviceName: string = 'Readest';
   deviceId: string = '';
 }
 
@@ -75,6 +79,18 @@ export class ReaderCommand {
   settings?: ReaderSettings;
   requestId?: string;
   metadataOnly?: boolean;
+  chrome?: ReaderChromeState;
+  systemDark?: boolean;
+}
+
+export class ReaderChromeState {
+  controls: boolean = true;
+  syncEnabled: boolean = false;
+  busy: boolean = false;
+  status: string = '';
+  labels: Record<string, string> = {};
+  safeTop: number = 0;
+  safeBottom: number = 0;
 }
 
 export interface ReaderEvent {
@@ -87,6 +103,8 @@ export interface ReaderEvent {
   restored?: boolean;
   message?: string;
   requestId?: string;
+  action?: string;
+  settings?: ReaderSettings;
 }
 
 export interface SyncResponse {

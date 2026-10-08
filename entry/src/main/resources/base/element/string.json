@@ -10,7 +10,7 @@
     },
     {
       "name": "EntryAbility_label",
-      "value": "HarmonyReadest"
+      "value": "Readest"
     },
     {
       "name": "library_subtitle",
@@ -58,11 +58,55 @@
     },
     {
       "name": "kosync_title",
-      "value": "KOReader progress sync"
+      "value": "KOReader Sync"
     },
     {
       "name": "kosync_description",
-      "value": "Use the same server, account, and EPUB in Readest. KoSync shares reading positions; import books separately."
+      "value": "Synchronize reading progress using the same server, account, and EPUB on each device. Book files are managed separately."
+    },
+    {
+      "name": "kosync_connect_description",
+      "value": "Connect to your KOReader Sync server."
+    },
+    {
+      "name": "reading_sync",
+      "value": "Reading Sync"
+    },
+    {
+      "name": "connected_as",
+      "value": "Connected as {account}"
+    },
+    {
+      "name": "not_connected",
+      "value": "Not connected"
+    },
+    {
+      "name": "sync_paused",
+      "value": "Sync paused"
+    },
+    {
+      "name": "sync_strategy",
+      "value": "Sync Strategy"
+    },
+    {
+      "name": "ask_on_conflict",
+      "value": "Ask on conflict"
+    },
+    {
+      "name": "checksum_method",
+      "value": "Checksum Method"
+    },
+    {
+      "name": "file_content",
+      "value": "File Content"
+    },
+    {
+      "name": "expand",
+      "value": "Expand"
+    },
+    {
+      "name": "collapse",
+      "value": "Collapse"
     },
     {
       "name": "server_url",
@@ -94,7 +138,7 @@
     },
     {
       "name": "connect_save",
-      "value": "Test connection & save"
+      "value": "Connect"
     },
     {
       "name": "sync_status",
@@ -102,7 +146,7 @@
     },
     {
       "name": "disconnect",
-      "value": "Disconnect and forget credentials"
+      "value": "Disconnect"
     },
     {
       "name": "appearance",
@@ -129,8 +173,76 @@
       "value": "Dark"
     },
     {
+      "name": "theme_system",
+      "value": "System"
+    },
+    {
+      "name": "theme_mode",
+      "value": "Theme Mode"
+    },
+    {
+      "name": "theme_color",
+      "value": "Theme Color"
+    },
+    {
+      "name": "theme_reader",
+      "value": "Reader"
+    },
+    {
+      "name": "scheme_default",
+      "value": "Default"
+    },
+    {
+      "name": "scheme_gray",
+      "value": "Gray"
+    },
+    {
+      "name": "scheme_sepia",
+      "value": "Sepia"
+    },
+    {
+      "name": "scheme_grass",
+      "value": "Grass"
+    },
+    {
+      "name": "scheme_cherry",
+      "value": "Cherry"
+    },
+    {
+      "name": "scheme_sky",
+      "value": "Sky"
+    },
+    {
+      "name": "scheme_solarized",
+      "value": "Solarized"
+    },
+    {
+      "name": "scheme_gruvbox",
+      "value": "Gruvbox"
+    },
+    {
+      "name": "scheme_nord",
+      "value": "Nord"
+    },
+    {
+      "name": "scheme_contrast",
+      "value": "Contrast"
+    },
+    {
+      "name": "scheme_sunset",
+      "value": "Sunset"
+    },
+    {
       "name": "about_description",
-      "value": "HarmonyReadest 0.1 · Built for HarmonyOS with the Readest/Foliate reader engine. AGPL-3.0-or-later. Official Readest cloud sync is planned for a later release."
+      "value": "Readest for HarmonyOS offers a focused EPUB reading experience with an organized bookshelf, customizable reading appearance, and cross-device reading progress synchronization."
+    },
+    {
+      "name": "about_version",
+      "value": "Version 0.0.4 · HarmonyOS"
+    },
+    {
+      "name": "about_license",
+      "value": "Licensed under AGPL-3.0-or-later"
     },
     {
       "name": "contents",
@@ -338,7 +450,7 @@
     },
     {
       "name": "integrations",
-      "value": "Integrations"
+      "value": "Sync"
     },
     {
       "name": "about",
@@ -363,6 +475,38 @@
     {
       "name": "opening",
       "value": "Opening book…"
+    },
+    {
+      "name": "add_book",
+      "value": "Add a book"
+    },
+    {
+      "name": "reading_progress",
+      "value": "Reading progress"
+    },
+    {
+      "name": "previous_page",
+      "value": "Previous page"
+    },
+    {
+      "name": "next_page",
+      "value": "Next page"
+    },
+    {
+      "name": "previous_section",
+      "value": "Previous section"
+    },
+    {
+      "name": "next_section",
+      "value": "Next section"
+    },
+    {
+      "name": "go_back",
+      "value": "Go back"
+    },
+    {
+      "name": "go_forward",
+      "value": "Go forward"
     },
     {
       "name": "error_import_read_failed",

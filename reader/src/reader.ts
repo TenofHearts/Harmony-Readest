@@ -5,6 +5,8 @@ import '../../vendor/foliate-js/view.js';
 import { BlobReader, BlobWriter, TextWriter, ZipReader, configure } from '@zip.js/zip.js/index-native.js';
 import { partialMD5 } from '../../vendor/readest/apps/readest-app/src/utils/md5';
 import { getCFIFromXPointer, getXPointerFromCFI, XCFI } from '../../vendor/readest/apps/readest-app/src/utils/xcfi';
+import { createChrome } from './chrome';
+import { palette, themeIsDark } from './palette';
 declare const __READER_TEST__: boolean;
 
 // Only this trusted top-level page can send native events. EPUB frames are script-disabled.
@@ -22,8 +24,15 @@ let lastPosition: any;
 let eventQueue = Promise.resolve();
 let userActionUntil = 0;
 let lastTapTurnAt = 0;
-let settings = { fontSize: 20, lineHeight: 1.7, theme: 'light' };
-const themes = { light: ['#faf8f2', '#252b29'], dark: ['#192321', '#e3e8df'], sepia: ['#f1e5cf', '#433a2e'] };
+let settings = { fontSize: 20, lineHeight: 1.7, themeMode: 'auto', themeColor: 'default' };
+let safeTop = 0, safeBottom = 0;
+const systemMedia = window.matchMedia('(prefers-color-scheme: dark)');
+let nativeSystemDark: boolean | undefined;
+const systemDark = () => nativeSystemDark ?? systemMedia.matches;
+const chrome = createChrome({ emit, getView: () => view, getSettings: () => settings,
+  getSystemDark: systemDark,
+  command: command => (window as any).readerReceive({ version: 1, session, ...command }) });
+systemMedia.addEventListener('change', () => appearance());
 const unsafeURL = (value: string) => /^(?:https?:|ftp:|javascript:|\/\/)/i.test(value.trim());
 const offlineCSS = (value: string) => value
   .replace(/url\(\s*(['"]?)(?:https?:|ftp:|\/\/)[^)]*\)/gi, 'none')
@@ -96,12 +105,15 @@ const flattenTOC = (items: any[], depth = 0): any[] => items.flatMap(item => [
 ]);
 
 function appearance() {
-  const [bg, fg] = themes[settings.theme as keyof typeof themes] ?? themes.light;
+  const dark = themeIsDark(settings.themeMode, systemDark());
+  const { bg, fg } = palette(settings.themeColor, dark);
   document.body.style.background = bg;
-  view?.renderer?.setStyles(`:root{color-scheme:${settings.theme === 'dark' ? 'dark' : 'light'}}
+  document.documentElement.style.colorScheme = dark ? 'dark' : 'light';
+  view?.renderer?.setStyles(`:root{color-scheme:${dark ? 'dark' : 'light'}}
     html,body{background:${bg}!important;color:${fg}!important}
     body{font-size:${settings.fontSize}px!important;line-height:${settings.lineHeight}!important}
     p,div,li{line-height:${settings.lineHeight}!important}a{color:inherit}`);
+  chrome.appearance();
 }
 
 function bindGestures(doc: Document) {
@@ -118,13 +130,14 @@ function bindGestures(doc: Document) {
   });
   doc.addEventListener('pointerup', (event: PointerEvent) => {
     if (suppress || !view || event.button !== 0) return;
+    if ((event.target as Element)?.closest?.('#reader-chrome')) return;
     if (doc.getSelection()?.toString() || (event.target as Element)?.closest?.('a')) return;
     const p = point(event), dx = p.x - downX, dy = p.y - downY;
     // Foliate handles touch swipes, including movement that emits pointercancel.
     // These listeners only handle deliberate, stationary taps.
     if (Date.now() - downAt > 500 || Math.abs(dx) > 10 || Math.abs(dy) > 10) return;
     const ratio = p.x / window.innerWidth;
-    if (ratio >= 1 / 3 && ratio <= 2 / 3) { emit('toggleControls'); return; }
+    if (ratio >= 1 / 3 && ratio <= 2 / 3) { chrome.toggle(); return; }
     if (ratio < 0 || ratio > 1 || Date.now() - lastTapTurnAt < 300) return;
     lastTapTurnAt = Date.now(); userActionUntil = Date.now() + 3000;
     void (ratio < 1 / 3 ? view.prev() : view.next());
@@ -141,11 +154,13 @@ async function snapshot(location: any, capturedSession: string, restored: boolea
   if (capturedSession !== session) return;
   const fraction = Math.max(0, Math.min(1, location.fraction ?? 0));
   lastPosition = { cfi: location.cfi, xpointer, percentage: fraction, chapter: simpleText(location.tocItem?.label) };
+  chrome.position(lastPosition);
   emit('position', { position: lastPosition, restored });
 }
 
 async function close() {
   suppress++;
+  chrome.close();
   view?.close(); view?.remove(); view = undefined;
   book?.destroy?.(); book = undefined;
   await archive?.close(); archive = undefined;
@@ -193,10 +208,16 @@ async function open(command: any) {
     view.renderer.setAttribute('gap', '4%');
     view.renderer.setAttribute('column-gap', '32px');
     // Foliate accepts per-side margins; a generic "margin" attribute is ignored.
-    for (const side of ['top', 'bottom']) view.renderer.setAttribute(`margin-${side}`, '12px');
+    view.renderer.setAttribute('margin-top', `${12 + safeTop}px`);
+    view.renderer.setAttribute('margin-bottom', `${12 + safeBottom}px`);
     for (const side of ['left', 'right']) view.renderer.setAttribute(`margin-${side}`, '24px');
     view.renderer.setAttribute('max-column-count', '2');
     view.renderer.setAttribute('max-inline-size', '720px');
+    // Readest FoliateViewer.tsx enables this exact vendored animation; push
+    // is Readest's default. No wrapper animation or replacement page layer.
+    view.renderer.setAttribute('turn-style', 'push');
+    if (!window.matchMedia('(prefers-reduced-motion: reduce)').matches) view.renderer.setAttribute('animated', '');
+    chrome.open(simpleText(book.metadata.title), flattenTOC(book.toc ?? []));
     appearance();
     await view.init({ lastLocation: command.cfi || undefined });
     await eventQueue;
@@ -208,11 +229,29 @@ async function receive(command: any) {
   if (command.version !== 1 || typeof command.session !== 'string') return;
   if (command.type !== 'open' && command.session !== session) return;
   try {
-    if (['next', 'previous', 'navigate', 'fraction'].includes(command.type)) userActionUntil = Date.now() + 1500;
+    if (typeof command.systemDark === 'boolean' && command.systemDark !== nativeSystemDark) {
+      nativeSystemDark = command.systemDark; appearance();
+    }
+    if (['next', 'previous', 'navigate', 'fraction', 'nextSection', 'previousSection', 'historyBack', 'historyForward'].includes(command.type)) userActionUntil = Date.now() + 3000;
     if (command.type === 'open') await open(command);
     else if (command.type === 'close') { await eventQueue; emit('closed', { position: lastPosition }); await close(); }
     else if (command.type === 'next') await view?.next();
     else if (command.type === 'previous') await view?.prev();
+    else if (command.type === 'nextSection') await view?.renderer?.nextSection?.();
+    else if (command.type === 'previousSection') await view?.renderer?.prevSection?.();
+    else if (command.type === 'historyBack') await view?.history.back();
+    else if (command.type === 'historyForward') await view?.history.forward();
+    else if (command.type === 'chrome') {
+      chrome.state(command.chrome);
+      const top = Math.max(0, command.chrome?.safeTop ?? 0), bottom = Math.max(0, command.chrome?.safeBottom ?? 0);
+      if (top !== safeTop || bottom !== safeBottom) {
+        safeTop = top; safeBottom = bottom;
+        view?.renderer?.setAttribute('margin-top', `${12 + safeTop}px`);
+        view?.renderer?.setAttribute('margin-bottom', `${12 + safeBottom}px`);
+      }
+    }
+    else if (command.type === 'systemTheme') { /* Theme already applied above, without persisting a user choice. */ }
+    else if (command.type === 'back') chrome.back();
     else if (command.type === 'appearance') {
       suppress++;
       try { settings = { ...settings, ...command.settings }; appearance(); await eventQueue; }

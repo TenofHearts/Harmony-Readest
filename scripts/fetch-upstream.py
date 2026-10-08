@@ -14,13 +14,15 @@ if not checkout.exists():
 subprocess.run(['git', '-C', str(checkout), 'fetch', '--depth', '1', 'origin', READEST], check=True)
 subprocess.run(['git', '-C', str(checkout), 'checkout', '--detach', READEST], check=True)
 subprocess.run(['git', '-C', str(checkout), 'sparse-checkout', 'set',
-                'apps/readest-app/src/utils', 'apps/readest-app/src/__tests__/fixtures/crengine',
+                'apps/readest-app/src/utils', 'apps/readest-app/src/styles', 'apps/readest-app/public',
+                'apps/readest-app/src-tauri/icons/android', 'apps/readest-app/src/__tests__/fixtures/crengine',
                 'apps/readest-app/src/__tests__/fixtures/data'], check=True)
 foliate = subprocess.check_output(['git', '-C', str(checkout), 'ls-tree', READEST,
                                   'packages/foliate-js'], text=True).split()[2]
 dest = ROOT / 'vendor' / 'readest'
 dest.mkdir(parents=True, exist_ok=True)
-paths = ['LICENSE', 'apps/readest-app/src/utils/xcfi.ts', 'apps/readest-app/src/utils/md5.ts']
+paths = ['LICENSE', 'apps/readest-app/src/utils/xcfi.ts', 'apps/readest-app/src/utils/md5.ts', 'apps/readest-app/src/styles/themes.ts']
+paths += ['apps/readest-app/public/icon.png', 'apps/readest-app/src-tauri/icons/android/mipmap-xxxhdpi/ic_launcher_foreground.png']
 paths += ['apps/readest-app/src/__tests__/fixtures/crengine/sample-alice.json',
           'apps/readest-app/src/__tests__/fixtures/data/sample-alice.epub']
 for path in paths:

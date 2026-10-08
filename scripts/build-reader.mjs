@@ -1,6 +1,8 @@
 import { build } from 'esbuild';
 import { mkdir, readFile, writeFile, copyFile } from 'node:fs/promises';
 import path from 'node:path';
+import './generate-themes.mjs';
+import './sync-branding.mjs';
 
 const testing = process.argv.includes('--test');
 const out = testing ? 'output/playwright/bundle' : 'entry/src/main/resources/rawfile/reader';
@@ -8,9 +10,11 @@ await mkdir(out, { recursive: true });
 await build({
   entryPoints: ['reader/src/reader.ts'], bundle: true, format: 'esm', target: 'chrome105',
   outfile: `${out}/reader.js`, sourcemap: false, minifySyntax: true,
+  loader: { '.css': 'text' },
   define: { __READER_TEST__: String(testing) },
   alias: { 'foliate-js': path.resolve('vendor/foliate-js') },
   plugins: [{ name: 'epub-only', setup(b) {
+    b.onLoad({ filter: /\.ets$/ }, async ({ path: file }) => ({ contents: await readFile(file, 'utf8'), loader: 'ts' }));
     b.onResolve({ filter: /\/vendor\/zip\.js$/ }, () => ({ path: path.resolve('node_modules/@zip.js/zip.js/index-native.js') }));
     b.onResolve({ filter: /^\.\/(pdf|mobi|fb2|comic-book|fixed-layout)\.js$|\/vendor\/fflate\.js$/ },
       () => ({ path: 'unsupported', namespace: 'unsupported' }));
