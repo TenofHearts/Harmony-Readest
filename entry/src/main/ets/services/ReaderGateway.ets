@@ -41,9 +41,10 @@ export class ReaderGateway {
         !Number.isFinite(event.position.percentage) || event.position.percentage < 0 || event.position.percentage > 1)) return;
       if (event.requestId && this.pending?.id === event.requestId && this.pending.session === event.session) {
         clearTimeout(this.pending.timer);
-        if (event.type === 'restored' && event.position) this.pending.resolve(event.position);
+        if ((event.type === 'restored' || event.type === 'inspected') && event.position) this.pending.resolve(event.position);
         else this.pending.reject(new Error('UNRESOLVED_POSITION'));
         this.pending = undefined;
+        return;
       }
       this.onEvent(event);
     } catch {}
@@ -92,6 +93,14 @@ export class ReaderGateway {
   }
 
   restore(remote: RemoteProgress): Promise<ReadingPosition> {
+    return this.locate(remote, 'restore');
+  }
+
+  inspect(remote: RemoteProgress): Promise<ReadingPosition> {
+    return this.locate(remote, 'inspect');
+  }
+
+  private locate(remote: RemoteProgress, type: string): Promise<ReadingPosition> {
     if (!remote.progress?.startsWith('/body/DocFragment')) return Promise.reject(new Error('UNRESOLVED_POSITION'));
     return new Promise((resolve: (position: ReadingPosition) => void, reject: (error: Error) => void) => {
       const pending = new PendingRestore(util.generateRandomUUID(), this.session, resolve, reject);
@@ -99,7 +108,7 @@ export class ReaderGateway {
       pending.timer = setTimeout(() => {
         if (this.pending === pending) { this.pending = undefined; reject(new Error('READER_TIMEOUT')); }
       }, 15000);
-      const command = new ReaderCommand(); command.type = 'restore'; command.xpointer = remote.progress; command.requestId = pending.id;
+      const command = new ReaderCommand(); command.type = type; command.xpointer = remote.progress; command.requestId = pending.id;
       this.send(command).catch(() => { clearTimeout(pending.timer); this.pending = undefined; reject(new Error('READER_ERROR')); });
     });
   }

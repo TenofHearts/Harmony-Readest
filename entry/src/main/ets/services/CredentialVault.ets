@@ -58,7 +58,8 @@ export class CredentialVault {
   }
 
   async save(settings: KoSyncSettings): Promise<void> {
-    if (!await huks.isKeyItemExist(this.alias, { properties: [] })) {
+    // isKeyItemExist rejects when the key is absent; hasKeyItem returns false.
+    if (!await huks.hasKeyItem(this.alias, { properties: [] })) {
       await huks.generateKeyItem(this.alias, { properties: this.properties(
         huks.HuksKeyPurpose.HUKS_KEY_PURPOSE_ENCRYPT | huks.HuksKeyPurpose.HUKS_KEY_PURPOSE_DECRYPT) });
     }

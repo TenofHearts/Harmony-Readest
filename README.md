@@ -8,7 +8,7 @@ The bookshelf and settings follow Readest's compact search toolbar, cover grid, 
 
 - Import reflowable EPUBs, extract covers and metadata, and resume saved positions offline.
 - Use the table of contents, tap/swipe page turns, progress slider, font size, line spacing, and light/sepia/dark themes.
-- Configure an existing KoSync account and HTTPS server. Sync on open, foreground return, network reconnection, and reading changes; manual Pull and Push are available.
+- Configure an existing KoSync account and HTTPS server. Like Readest's prompt mode, check remote progress on book open and app return, and let the user choose when positions differ. Uploads pause until that choice. Reading changes upload after five seconds, including backwards reading; manual Send progress and Check remote are available.
 - Prefer the newer local reading-change time or server update time. Missing/tied times require a choice. An unresolvable remote XPointer pauses automatic uploads.
 - English and Simplified Chinese follow the system language.
 

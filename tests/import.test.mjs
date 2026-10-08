@@ -80,3 +80,14 @@ test('cancelled picker leaves import idle', async () => {
   assert.equal(app.books.length, 0); assert.equal(app.busy, false);
   assert.equal(app.importing, false); assert.equal(importFixture.files.size, 0);
 });
+
+test('book/app openings check remote; reconnect and background use upload-only mode', async () => {
+  const app = fixture(); const calls = [];
+  app.activeBook = importFixture.draft; app.config.enabled = true;
+  app.sync = async (mode = 'upload') => { calls.push(mode); };
+  await app.handle({ version: 1, session: app.reader.session, type: 'opened' });
+  app.onForeground(); app.onNetworkAvailable(); app.onBackground();
+  assert.deepEqual(calls, ['reconcile', 'reconcile', 'upload', 'upload']);
+  app.conflict = { progress: '/body/DocFragment[2]/body/p' }; app.blocked = true;
+  app.onNetworkAvailable(); app.onBackground(); assert.equal(calls.length, 4);
+});

@@ -4,8 +4,8 @@
 
 - Production ArkTS/HAP build passes with the installed HarmonyOS 6.1.1/API 24 SDK. The local development profile now produces both signed and unsigned HAPs.
 - Native Hypium test HAP compiles. **Its tests have not run on HarmonyOS.**
-- Node tests cover timestamp decisions, server echoes, missing records, invalid responses, authentication fallback, custom base URLs, revision acknowledgment, session cancellation, and a two-client exchange through a local KoSync-compatible HTTP fixture server.
-- Edge browser tests cover EPUB metadata/TOC, the pinned Alice partial digest, all **707** upstream CREngine oracle words in both directions, page turning, saved-CFI reopening, invalid/stale locators, appearance, landscape relayout, and EPUB script/tracking isolation.
+- Node tests cover user-choice decisions independent of timestamp/percentage ordering, paused queued uploads, accepted server reports, upload-only reading, opening/foreground/reconnect lifecycle routing, missing records (404 and CrossPoint's successful `{}`), invalid responses, authentication fallback, custom base URLs, revision acknowledgment, session cancellation, and a two-client exchange through a local KoSync-compatible HTTP fixture server. Credential tests exercise first-save key creation, encrypted Unicode reload, key reuse, tamper rejection and key-store failures through a platform fixture using real AES-GCM.
+- Edge browser tests cover EPUB metadata/TOC, the pinned Alice partial digest, all **707** upstream CREngine oracle words in both directions, remote previews without navigation, page turning, saved-CFI reopening, invalid/stale locators, appearance, landscape relayout, and EPUB script/tracking isolation.
 - Browser screenshots are generated under `output/playwright`; they validate the web reader, not the native ArkUI screens or ArkWeb itself.
 
 ## EPUB loading and UI update (2026-10-09)
@@ -21,7 +21,15 @@
 - On the physical tablet, repeated middle-third taps hid and restored all native bars. The WebView bounds remained `[0,88][2800,1777]`, and the accessible book text and its bounds remained identical before/after both toggles. Device screenshots include `reader-hidden.jpeg`, `reader-visible-again.jpeg`, `bookshelf-after.jpeg`, and `settings-after.jpeg`.
 - Native bookshelf/settings are adapted from the pinned Readest library header, cover grid, settings tabs and boxed-list components. They include search, grid/list views, sorting, neutral surfaces, monochrome toolbar icons, and English/Chinese labels.
 
-Browser and local-server tests are not a live Readest integration test. Native import and ArkWeb reading were checked on the connected tablet. Native sync transport and the full HUKS/persistence Hypium suite still need runtime validation.
+## KOSync connection and prompt flow (2026-10-09)
+
+- The supplied CrossPoint account authenticated successfully from the computer. The first tablet request timed out; a requested retry reached the server with HTTP 200 and exposed a separate first-save failure.
+- `isKeyItemExist` throws when no encryption key exists. The vault now uses `hasKeyItem` to create its first key. Numeric native error messages are normalized before entering UI string state, preventing the reproduced `split is not callable` crash.
+- CrossPoint's HTTP 200 `{}` for a book without progress is treated as a missing record, not invalid progress. Native transport reports timeout/DNS/TLS/network errors separately and honors the system HTTP proxy.
+- The updated signed app was installed over the existing app. The user confirmed the connection fixes work. After another install/restart, the saved account loaded and the real book's native progress GET returned HTTP 200; the reader displayed progress synced at the saved 78% position.
+- The final policy follows the pinned Readest prompt strategy, with locally resolved remote previews, paused uploads until resolution, five-second uploads, and opening/foreground checks. Node fixtures cover both choices and blocked queued uploads; browser tests verify previewing does not move the reader. Full two-device Readest acceptance and the native Hypium runtime suite remain pending.
+
+Browser and local-server tests are not a live Readest integration test. Native import, ArkWeb reading, credential reload and sync GET were checked on the connected tablet. The full HUKS/persistence Hypium suite still needs runtime execution.
 
 ## Emulator acceptance procedure
 
@@ -29,14 +37,14 @@ Browser and local-server tests are not a live Readest integration test. Native i
 2. Import the pinned Alice EPUB and a Chinese EPUB through the system picker. Verify covers/metadata, duplicate handling, cancelled selection, malformed ZIPs, and rejection of fixed-layout/encrypted EPUBs. If copying fixture books into the emulator, use its Documents directory and select them normally.
 3. Check empty library, bookshelf, settings, reader controls, TOC, dialogs, dark theme, and Chinese locale. Check phone portrait and tablet/landscape layouts; confirm all controls remain reachable.
 4. Read to a different chapter, close the reader, force-stop/relaunch, and reopen. Verify the passage and progress survive. Rotate and change typography without creating a new reading-change timestamp. Rapidly switch books and confirm old callbacks do not update the new one.
-5. Run the Hypium `ohosTest` suite: relational persistence/pending progress, isolated HUKS Unicode credentials and no plaintext, timestamp decisions, stale sessions, and concurrent acknowledgment.
-6. Configure the same KoSync URL/account and identical EPUB in Readest and HarmonyReadest. Push from HarmonyReadest and pull in Readest; then advance in Readest and reopen HarmonyReadest. Check the passage reached, not only the percentage. Repeat with local progress newer than remote, and read backwards to verify that newer-time comparison does not mean furthest-progress comparison.
-7. Read while offline, restart, reconnect, and verify pending progress reconciles. Introduce a newer remote position before reconnecting and verify it wins. Close immediately after a page turn; verify the local save and the next-open retry if the background flush was interrupted.
-8. Test invalid credentials, HTML instead of a sync endpoint, timeouts, missing/tied timestamps, and an unresolvable remote XPointer. A failed pull/conversion must not silently overwrite remote progress. Manual Push explicitly overrides the remote record; manual Pull explicitly selects it.
+5. Run the Hypium `ohosTest` suite: relational persistence/pending progress, isolated HUKS Unicode credentials and no plaintext, user-choice decisions, stale sessions, and concurrent acknowledgment.
+6. Configure the same KoSync URL/account and identical EPUB in Readest and HarmonyReadest. Advance in Readest and reopen HarmonyReadest: verify the choice dialog does not move the reader or upload until a choice. Choose each side in separate trials. Check the passage reached, not only the percentage. Read backwards after resolving the opening check: local progress must upload without being forced forwards.
+7. Read while offline, restart, reconnect, and verify local pending changes upload without a remote pull during active reading. Reopening/returning to the app checks remote and may prompt. Close immediately after a page turn; verify the local save and next-open retry if the background flush was interrupted.
+8. Test invalid credentials, HTML instead of a sync endpoint, timeouts, missing/tied timestamps, and an unresolvable remote XPointer. Timestamps do not choose the winner in prompt mode; cross-client percentage matches alone cannot dismiss an unresolved XPointer. A failed conversion must not release automatic uploads. Accepting an unchanged report must not repeat the prompt on the next foreground return. Check remote prompts; Send progress explicitly uploads.
 9. Change accounts/servers and disable sync. Confirm queued work from the previous session does not update the new account's local state. Credential tests use separate preference/key names and do not replace the user's credentials.
 
 ## Current environment limitations
 
 The initial validation had no connected target or signing profile. As of 2026-10-09, a signed build and connected physical tablet are available and EPUB loading has been verified there. The full native Hypium suite, phone emulator checks, and an actual Readest/KoSync account round trip remain pending. Existing SDK agreement selections were not changed.
 
-KoSync timestamps describe server updates and may differ from the actual moment another client read a passage. Accurate clocks are assumed. The protocol has no conditional-write primitive, so simultaneous clients can race between a pull and a push; the client reconciles before uploads and checks acknowledgments, but cannot make that exchange atomic.
+Sync follows Readest's prompt strategy; see [the implemented flow](SYNC_DESIGN.md). Cross-client percentages can differ with layout or rounding, so another device's XPointer is resolved locally for comparison. KOSync has no conditional-write primitive; simultaneous clients can race, and user-choice reconciliation cannot make their writes atomic. CrossPoint's standard endpoint returns its most recently updated device record.

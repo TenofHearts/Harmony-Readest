@@ -3,6 +3,7 @@ import { webview } from '@kit.ArkWeb';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { BookRecord, KoSyncSettings, ReaderSettings, TocEntry } from '../core/Models';
 import { AppController } from '../services/AppController';
+import { errorMessage } from '../core/Errors';
 import { ReaderGateway, READER_URL, BRIDGE_PERMISSION } from '../services/ReaderGateway';
 
 class BridgeReceiver {
@@ -31,6 +32,8 @@ struct Index {
   @State error: string = '';
   @State conflict: boolean = false;
   @State remotePercent: number = 0;
+  @State remoteDevice: string = '';
+  @State remoteChapter: string = '';
   @State toc: TocEntry[] = [];
   @State server: string = 'https://sync.koreader.rocks';
   @State username: string = '';
@@ -57,7 +60,7 @@ struct Index {
       this.deviceName = this.app!.config.deviceName; this.syncEnabled = this.app!.config.enabled || !this.username;
       this.fontSize = this.app!.appearance.fontSize; this.lineHeight = this.app!.appearance.lineHeight;
       this.theme = this.app!.appearance.theme; this.refresh();
-    }).catch((error: Error) => { this.error = error.message; });
+    }).catch((error: Error) => { this.error = errorMessage(error); });
   }
 
   aboutToDisappear(): void { this.app?.dispose(); }
@@ -76,7 +79,8 @@ struct Index {
     this.controls = this.app.controls; this.title = this.app.activeBook?.title || '';
     this.chapter = this.app.activeBook?.position.chapter || ''; this.progress = (this.app.activeBook?.position.percentage || 0) * 100;
     this.toc = this.app.activeBook?.toc || []; this.status = this.app.status; this.error = this.app.error;
-    this.conflict = !!this.app.conflict; this.remotePercent = (this.app.conflict?.percentage || 0) * 100;
+    this.conflict = !!this.app.conflict; this.remotePercent = (this.app.conflictPreview?.percentage ?? this.app.conflict?.percentage ?? 0) * 100;
+    this.remoteDevice = this.app.conflict?.device || this.t('remote'); this.remoteChapter = this.app.conflictPreview?.chapter || '';
     this.initialized = this.app.initialized && !!this.gateway?.ready;
   }
 
@@ -97,7 +101,7 @@ struct Index {
     const selected = this.app!.books.find((item: BookRecord) => item.id === book.id);
     if (selected && !this.busy) this.run(() => this.app!.open(selected));
   }
-  private run(action: () => Promise<void>): void { action().catch((error: Error) => { if (this.app) this.app.error = error.message; this.error = error.message; }); }
+  private run(action: () => Promise<void>): void { action().catch((error: Error) => { if (this.app) this.app.error = errorMessage(error); this.error = errorMessage(error); }); }
   private action(type: string): void { if (!this.busy) this.run(() => this.gateway!.send(this.app!.command(type))); }
   private changeAppearance(): void {
     const settings = new ReaderSettings(); settings.fontSize = this.fontSize; settings.lineHeight = this.lineHeight; settings.theme = this.theme;
@@ -107,14 +111,15 @@ struct Index {
     const config = new KoSyncSettings(); config.serverUrl = this.server; config.username = this.username;
     config.password = this.password || this.app!.config.password; config.enabled = this.syncEnabled; config.deviceName = this.deviceName;
     this.busy = true;
-    this.app!.saveConfig(config).then(() => { this.password = ''; }).catch((error: Error) => { this.app!.error = error.message; })
+    this.app!.saveConfig(config).then(() => { this.password = ''; }).catch((error: Error) => { this.app!.error = errorMessage(error); })
       .finally(() => { this.busy = false; this.refresh(); });
   }
   private errorText(): string {
     const key = this.error.split(':')[0];
     const keys: string[] = ['AUTH_FAILED', 'HTTPS_REQUIRED', 'NOT_KOSYNC', 'CREDENTIALS_REQUIRED', 'CREDENTIALS_UNAVAILABLE',
       'DUPLICATE_BOOK', 'INVALID_EPUB', 'DRM_OR_ENCRYPTED', 'FIXED_LAYOUT_UNSUPPORTED', 'BOOK_TOO_LARGE', 'UNRESOLVED_POSITION',
-      'IMPORT_TIMEOUT', 'READER_TIMEOUT', 'SERVER_ERROR', 'INVALID_PROGRESS', 'IMPORT_READ_FAILED', 'IMPORT_WRITE_FAILED', 'BOOK_NOT_FOUND'];
+      'IMPORT_TIMEOUT', 'READER_TIMEOUT', 'SERVER_ERROR', 'INVALID_PROGRESS', 'IMPORT_READ_FAILED', 'IMPORT_WRITE_FAILED', 'BOOK_NOT_FOUND',
+      'NETWORK_TIMEOUT', 'NETWORK_DNS', 'NETWORK_TLS', 'NETWORK_ERROR'];
     return keys.includes(key) ? this.t(`error_${key.toLowerCase()}`) : this.t('error_generic');
   }
 
@@ -390,8 +395,8 @@ struct Index {
         Row({ space: 8 }) {
           Button('‹').backgroundColor(Color.Transparent).fontColor(this.fg()).onClick(() => this.action('previous'))
           Text(this.t(`status_${this.status}`)).fontFamily('HarmonyOS Sans').fontSize(11).fontColor(this.muted()).layoutWeight(1).textAlign(TextAlign.Center)
-          Button(this.t('pull')).fontFamily('HarmonyOS Sans').fontSize(12).backgroundColor(Color.Transparent).fontColor(this.fg()).enabled(!!this.app?.config.enabled).onClick(() => { this.run(() => this.app!.sync('pull')); })
-          Button(this.t('push')).fontFamily('HarmonyOS Sans').fontSize(12).backgroundColor(Color.Transparent).fontColor(this.fg()).enabled(!!this.app?.config.enabled).onClick(() => { this.run(() => this.app!.sync('push')); })
+          Button(this.t('sync_now')).fontFamily('HarmonyOS Sans').fontSize(12).backgroundColor(Color.Transparent).fontColor(this.fg()).enabled(!!this.app?.config.enabled).onClick(() => { this.run(() => this.app!.sync('manual-upload')); })
+          Button(this.t('check_remote')).fontFamily('HarmonyOS Sans').fontSize(12).backgroundColor(Color.Transparent).fontColor(this.fg()).enabled(!!this.app?.config.enabled).onClick(() => { this.run(() => this.app!.sync('reconcile')); })
           Button('›').backgroundColor(Color.Transparent).fontColor(this.fg()).onClick(() => this.action('next'))
         }.height(36).width('100%')
       }.padding({ left: 20, right: 20, top: 8, bottom: 12 }).width('100%').backgroundColor(this.bg())
@@ -429,9 +434,10 @@ struct Index {
           Column({ space: 16 }) {
             Text(this.t('conflict_title')).fontFamily('HarmonyOS Sans').fontSize(20).fontWeight(FontWeight.Medium).fontColor(this.fg())
             Text(this.t('conflict_description')).fontFamily('HarmonyOS Sans').fontSize(14).fontColor(this.muted())
-            Text(`${this.t('local')}: ${Math.round(this.progress)}% · ${this.t('remote')}: ${Math.round(this.remotePercent)}%`).fontColor(this.fg())
-            Row({ space: 12 }) { Button(this.t('keep_local')).onClick(() => { this.run(() => this.app!.sync('push')); })
-              Button(this.t('use_remote')).backgroundColor('#356553').onClick(() => { this.run(() => this.app!.sync('pull')); }) }
+            Text(`${this.t('local')}: ${this.chapter} · ${this.progress.toFixed(1)}%`).fontColor(this.fg())
+            Text(`${this.remoteDevice}: ${this.remoteChapter} · ${this.remotePercent.toFixed(1)}%`).fontColor(this.fg())
+            Row({ space: 12 }) { Button(this.t('keep_local')).onClick(() => { this.run(() => this.app!.sync('keep-local')); })
+              Button(this.t('use_remote')).backgroundColor('#356553').onClick(() => { this.run(() => this.app!.sync('use-remote')); }) }
           }.padding(24).width('94%').constraintSize({ maxWidth: 560 }).backgroundColor(this.bg()).borderRadius(20)
         }
       }

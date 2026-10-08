@@ -99,6 +99,12 @@ try {
   assert.deepEqual(oracleResult.failures.slice(0, 10), []); report.oracleWords = oracleResult.count;
   report.tests.push('Every upstream CREngine oracle word resolves and round trips');
   const target = oracle.fragments.find(f => f.index === 5).words[5].xp;
+  const beforeInspect = await page.evaluate(() => window.readerTest.getView().lastLocation.cfi);
+  await command({ type: 'inspect', xpointer: target, requestId: 'preview-1' });
+  const preview = await page.evaluate(() => window.events.find(e => e.requestId === 'preview-1'));
+  assert.equal(preview.type, 'inspected'); assert.ok(preview.position.cfi); assert.ok(Number.isFinite(preview.position.percentage));
+  assert.equal(await page.evaluate(() => window.readerTest.getView().lastLocation.cfi), beforeInspect);
+  report.tests.push('Remote conflict preview resolves locally without moving the reader');
   await command({ type: 'restore', xpointer: target, requestId: 'restore-1' });
   const restored = await page.evaluate(() => window.events.find(e => e.requestId === 'restore-1'));
   assert.equal(restored.type, 'restored'); assert.ok(restored.position.cfi);

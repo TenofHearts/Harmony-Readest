@@ -141,12 +141,12 @@
       "value": "Reading"
     },
     {
-      "name": "pull",
-      "value": "Pull"
+      "name": "sync_now",
+      "value": "Send progress"
     },
     {
-      "name": "push",
-      "value": "Push"
+      "name": "check_remote",
+      "value": "Check remote"
     },
     {
       "name": "conflict_title",
@@ -154,23 +154,23 @@
     },
     {
       "name": "conflict_description",
-      "value": "These positions differ and their times cannot be ordered. Automatic upload is paused until you choose."
+      "value": "Reading progress differs between devices. Choose where to continue; automatic uploads are paused until you choose."
     },
     {
       "name": "local",
-      "value": "Local"
+      "value": "This device"
     },
     {
       "name": "remote",
-      "value": "Server"
+      "value": "Other device"
     },
     {
       "name": "keep_local",
-      "value": "Keep local"
+      "value": "Continue here"
     },
     {
       "name": "use_remote",
-      "value": "Use server"
+      "value": "Use other position"
     },
     {
       "name": "remove_description",
@@ -254,7 +254,23 @@
     },
     {
       "name": "error_unresolved_position",
-      "value": "The server position could not be restored. Automatic upload is paused. Check that both apps use the same EPUB, or explicitly push your local position."
+      "value": "The server position could not be restored. Automatic upload is paused. Check that both apps use the same EPUB, then retry syncing."
+    },
+    {
+      "name": "error_network_timeout",
+      "value": "The sync server did not respond in time. Check the tablet network, VPN or Wi-Fi proxy, then retry."
+    },
+    {
+      "name": "error_network_dns",
+      "value": "The sync server address could not be resolved. Check the server URL and network DNS."
+    },
+    {
+      "name": "error_network_tls",
+      "value": "A secure connection to the sync server could not be verified. Check the device clock and server certificate."
+    },
+    {
+      "name": "error_network_error",
+      "value": "The sync server could not be reached. Check the network, VPN or Wi-Fi proxy, then retry."
     },
     {
       "name": "error_import_timeout",

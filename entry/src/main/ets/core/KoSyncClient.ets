@@ -33,8 +33,8 @@ export class KoSyncClient implements ProgressSyncProvider {
   async authenticate(): Promise<void> {
     const response = await this.request('/users/auth');
     this.check(response);
-    const json = JSON.parse(response.body) as Object;
-    if (!json || typeof json !== 'object' || Array.isArray(json)) throw new Error('NOT_KOSYNC');
+    const json = JSON.parse(response.body) as Record<string, string>;
+    if (!json || typeof json !== 'object' || Array.isArray(json) || json.authorized !== 'OK') throw new Error('NOT_KOSYNC');
   }
 
   private check(response: SyncResponse): void {
@@ -50,10 +50,13 @@ export class KoSyncClient implements ProgressSyncProvider {
     this.check(response);
     const remote = JSON.parse(response.body) as RemoteProgress;
     if (!remote || typeof remote !== 'object' || Array.isArray(remote)) throw new Error('INVALID_PROGRESS');
+    // Stock KoSync and CrossPoint use an empty successful response for a new book.
+    if (Object.keys(remote).length === 0) return null;
     if (remote.document && remote.document !== hash) throw new Error('DOCUMENT_MISMATCH');
     const hasPointer = typeof remote.progress === 'string' && remote.progress.length > 0;
     const hasFraction = typeof remote.percentage === 'number' && Number.isFinite(remote.percentage) &&
       remote.percentage >= 0 && remote.percentage <= 1;
+    if (remote.percentage !== undefined && !hasFraction) throw new Error('INVALID_PROGRESS');
     if (!hasPointer && !hasFraction) throw new Error('INVALID_PROGRESS');
     if (remote.timestamp !== undefined && (typeof remote.timestamp !== 'number' || !Number.isFinite(remote.timestamp))) {
       throw new Error('INVALID_TIMESTAMP');
@@ -61,7 +64,7 @@ export class KoSyncClient implements ProgressSyncProvider {
     return remote;
   }
 
-  async push(hash: string, position: ReadingPosition): Promise<void> {
+  async push(hash: string, position: ReadingPosition): Promise<RemoteProgress | null> {
     if (!/^[0-9a-f]{32}$/.test(hash) || !position.xpointer.startsWith('/body/DocFragment') ||
       !Number.isFinite(position.percentage) || position.percentage < 0 || position.percentage > 1) {
       throw new Error('UNRESOLVED_POSITION');
@@ -70,5 +73,15 @@ export class KoSyncClient implements ProgressSyncProvider {
       device: this.config.deviceName, device_id: this.config.deviceId };
     const response = await this.request('/syncs/progress', 'PUT', JSON.stringify(payload));
     this.check(response);
+    const ack = JSON.parse(response.body) as RemoteProgress;
+    if (!ack || typeof ack !== 'object' || Array.isArray(ack)) throw new Error('INVALID_PROGRESS');
+    if (ack.document && ack.document !== hash) throw new Error('DOCUMENT_MISMATCH');
+    if (ack.timestamp !== undefined) {
+      if (typeof ack.timestamp !== 'number' || !Number.isFinite(ack.timestamp) || ack.timestamp <= 0) throw new Error('INVALID_TIMESTAMP');
+      payload.timestamp = ack.timestamp;
+      return payload;
+    }
+    // Some stock-compatible servers acknowledge only with { updated: 'OK' }.
+    return payload;
   }
 }

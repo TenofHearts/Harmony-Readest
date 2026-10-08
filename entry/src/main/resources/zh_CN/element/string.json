@@ -141,12 +141,12 @@
       "value": "阅读中"
     },
     {
-      "name": "pull",
-      "value": "拉取"
+      "name": "sync_now",
+      "value": "发送进度"
     },
     {
-      "name": "push",
-      "value": "推送"
+      "name": "check_remote",
+      "value": "检查远端"
     },
     {
       "name": "conflict_title",
@@ -154,23 +154,23 @@
     },
     {
       "name": "conflict_description",
-      "value": "两个位置不同，且无法按时间确定先后。请选择要保留的位置，自动上传已暂停。"
+      "value": "设备之间的阅读位置不同。请选择要继续阅读的位置，自动上传已暂停。"
     },
     {
       "name": "local",
-      "value": "本地"
+      "value": "此设备"
     },
     {
       "name": "remote",
-      "value": "服务器"
+      "value": "其他设备"
     },
     {
       "name": "keep_local",
-      "value": "保留本地"
+      "value": "在此继续"
     },
     {
       "name": "use_remote",
-      "value": "采用服务器"
+      "value": "采用另一位置"
     },
     {
       "name": "remove_description",
@@ -254,7 +254,23 @@
     },
     {
       "name": "error_unresolved_position",
-      "value": "无法恢复服务器位置，已暂停自动上传。请检查两端是否使用相同 EPUB，或手动推送本地位置。"
+      "value": "无法恢复服务器位置，已暂停自动上传。请检查两端是否使用相同 EPUB，然后重试同步。"
+    },
+    {
+      "name": "error_network_timeout",
+      "value": "连接同步服务器超时。请检查平板网络、VPN 或 Wi-Fi 代理后重试。"
+    },
+    {
+      "name": "error_network_dns",
+      "value": "无法解析同步服务器地址。请检查服务器地址和网络 DNS。"
+    },
+    {
+      "name": "error_network_tls",
+      "value": "无法验证与同步服务器的安全连接。请检查设备时间和服务器证书。"
+    },
+    {
+      "name": "error_network_error",
+      "value": "无法连接同步服务器。请检查网络、VPN 或 Wi-Fi 代理后重试。"
     },
     {
       "name": "error_import_timeout",

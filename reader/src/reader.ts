@@ -220,6 +220,16 @@ async function receive(command: any) {
     }
     else if (command.type === 'navigate') await view?.goTo(command.href || command.cfi);
     else if (command.type === 'fraction') await view?.goToFraction(command.percentage);
+    else if (command.type === 'inspect') {
+      const cfi = await getCFIFromXPointer(command.xpointer, undefined, undefined, book);
+      if (!cfi || !view.resolveCFI(cfi)) throw Error('UNRESOLVED_POSITION');
+      const progress = await view.getCFIProgress(cfi);
+      if (!progress || !Number.isFinite(progress.fraction)) throw Error('UNRESOLVED_POSITION');
+      const tocItem = await view.getTOCItemOf(cfi);
+      emit('inspected', { requestId: command.requestId, position: {
+        cfi, xpointer: command.xpointer, percentage: Math.max(0, Math.min(1, progress.fraction)), chapter: simpleText(tocItem?.label)
+      } });
+    }
     else if (command.type === 'restore') {
       suppress++;
       try {

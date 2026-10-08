@@ -7,6 +7,7 @@ import { BookRecord, KoSyncSettings, ReaderCommand, ReaderEvent, ReaderSettings,
 import { KoSyncClient, normalizeServer } from '../core/KoSyncClient';
 import { ProgressCoordinator, SyncHooks } from '../core/ProgressCoordinator';
 import { isCurrentSession } from '../core/SyncPolicy';
+import { errorMessage } from '../core/Errors';
 import { Repository } from './Repository';
 import { CredentialVault } from './CredentialVault';
 import { NativeTransport } from './NativeTransport';
@@ -23,6 +24,7 @@ export class AppController {
   error: string = '';
   busy: boolean = false;
   conflict?: RemoteProgress;
+  conflictPreview?: ReadingPosition;
   controls: boolean = true;
   initialized: boolean = false;
   importing: boolean = false;
@@ -53,7 +55,7 @@ export class AppController {
     this.config.deviceId = await this.store.deviceId();
     try {
       this.network = connection.createNetConnection();
-      this.network.on('netAvailable', () => this.onForeground());
+      this.network.on('netAvailable', () => this.onNetworkAvailable());
       this.network.register(() => {});
     } catch { this.network = undefined; }
     this.initialized = true;
@@ -68,8 +70,9 @@ export class AppController {
   }
 
   private fail(error: Error): void {
-    hilog.error(0x0000, 'HarmonyReadest', 'Operation failed: %{public}s', error.message);
-    this.error = error.message; this.status = 'error'; this.changed();
+    const message = errorMessage(error);
+    hilog.error(0x0000, 'HarmonyReadest', 'Operation failed: %{public}s', message);
+    this.error = message; this.status = 'error'; this.changed();
   }
   private scope(): string { return `${this.config.serverUrl}|${this.config.username}`; }
 
@@ -88,7 +91,7 @@ export class AppController {
       }
     }
     this.status = 'connected'; this.error = ''; this.changed();
-    if (this.opened && config.enabled) await this.sync();
+    if (this.opened && config.enabled) await this.sync('reconcile');
   }
 
   async disconnect(): Promise<void> {
@@ -169,7 +172,7 @@ export class AppController {
     if (!this.activeBook) return;
     await this.events;
     this.busy = true; this.changed();
-    // Reconcile and flush before tearing down the DOM needed for conversion.
+    // Flush the chosen local position before tearing down the reader.
     try { if (!this.blocked && this.config.enabled) await this.sync(); } catch {}
     if (this.opened && this.reader) {
       await new Promise<void>((resolve: () => void) => {
@@ -216,7 +219,7 @@ export class AppController {
       book.position = event.position; book.dirty = true; book.syncScope = this.scope();
       await this.store.save(book);
       clearTimeout(this.debounce);
-      if (this.config.enabled && !this.blocked) this.debounce = setTimeout(() => { this.sync().catch(() => {}); }, 3000);
+      if (this.config.enabled && !this.blocked) this.debounce = setTimeout(() => { this.sync().catch(() => {}); }, 5000);
     } else if (event.type === 'position' && event.position && !book.position.cfi) {
       book.position = event.position; book.position.updatedAt = 0; book.position.revision = 0;
     } else if (event.type === 'opened') {
@@ -224,7 +227,7 @@ export class AppController {
       if (this.importing) { this.importResolve?.(); this.importResolve = undefined; }
       else {
         this.opened = true; this.busy = false; await this.store.save(book);
-        this.changed(); if (this.config.enabled) this.sync().catch(() => {});
+        this.changed(); if (this.config.enabled) this.sync('reconcile').catch(() => {});
       }
     } else if (event.type === 'error') {
       clearTimeout(this.openTimer);
@@ -237,20 +240,24 @@ export class AppController {
     this.changed();
   }
 
-  async sync(mode: string = 'auto'): Promise<void> {
+  async sync(mode: string = 'upload'): Promise<void> {
     const book = this.activeBook;
-    if (!book || !this.opened || !this.config.enabled || !this.config.userkey || (this.blocked && mode === 'auto')) return;
-    if (mode !== 'auto') { this.blocked = false; this.restoreFailed = false; this.conflict = undefined; }
+    if (!book || !this.opened || !this.config.enabled || !this.config.userkey || (this.blocked && mode === 'upload')) return;
+    if (mode !== 'upload') { this.blocked = false; this.restoreFailed = false; this.conflict = undefined; this.conflictPreview = undefined; }
     if (!this.coordinator) {
       const session = this.reader!.session, epoch = this.epoch, scope = this.scope();
       const hooks: SyncHooks = {
         save: (value: BookRecord): Promise<void> => this.store.save(value),
+        inspect: (remote: RemoteProgress): Promise<ReadingPosition> => this.reader!.inspect(remote),
+        deviceId: this.config.deviceId,
         restore: (remote: RemoteProgress): Promise<ReadingPosition> => this.reader!.restore(remote).catch((error: Error) => {
           if (epoch === this.epoch) this.restoreFailed = true; throw error;
         }),
         active: (): boolean => epoch === this.epoch && session === this.reader?.session && scope === this.scope(),
         status: (status: string): void => { if (epoch === this.epoch) { this.status = status; this.changed(); } },
-        conflict: (remote: RemoteProgress): void => { this.conflict = remote; this.blocked = true; this.changed(); }
+        conflict: (remote: RemoteProgress, preview?: ReadingPosition): void => {
+          this.conflict = remote; this.conflictPreview = preview; this.blocked = true; this.changed();
+        }
       };
       this.coordinator = new ProgressCoordinator(new KoSyncClient(this.config, new NativeTransport()), hooks);
     }
@@ -266,7 +273,11 @@ export class AppController {
     if (!this.blocked) this.sync().catch(() => {});
   }
 
-  onForeground(): void { if (this.opened && !this.conflict && !this.restoreFailed) { this.blocked = false; this.sync().catch(() => {}); } }
+  onForeground(): void { if (this.opened) { this.blocked = false; this.sync('reconcile').catch(() => {}); } }
+
+  private onNetworkAvailable(): void {
+    if (this.opened && !this.conflict && !this.restoreFailed) { this.blocked = false; this.sync().catch(() => {}); }
+  }
 
   dispose(): void {
     clearTimeout(this.openTimer);

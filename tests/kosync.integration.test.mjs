@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 import { loadCore } from './core-loader.mjs';
-const { KoSyncClient, KoSyncSettings, ReadingPosition } = await loadCore();
+const { KoSyncClient, KoSyncSettings, ReadingPosition, BookRecord, ProgressCoordinator } = await loadCore();
 
 test('two clients exchange exact locators through a KoSync-compatible HTTP server', async () => {
   const records = new Map();
@@ -18,7 +18,7 @@ test('two clients exchange exact locators through a KoSync-compatible HTTP serve
       res.end('{"updated":"OK"}'); return;
     }
     const record = records.get(req.url.slice('/syncs/progress/'.length));
-    if (!record) { res.writeHead(404); res.end('{}'); return; }
+    if (!record) { res.end('{}'); return; }
     // Match the official server's response, which need not echo "document".
     const { document, ...reply } = record; res.end(JSON.stringify(reply));
   });
@@ -39,5 +39,21 @@ test('two clients exchange exact locators through a KoSync-compatible HTTP serve
     position.xpointer = '/body/DocFragment[3]/body/p/text().24'; position.percentage = .45;
     await b.push(hash, position); const reply = await a.pull(hash);
     assert.equal(reply.progress, position.xpointer); assert.equal(reply.percentage, .45); assert.ok(reply.timestamp);
+    const local = new BookRecord(); local.hash = hash;
+    local.position.cfi = 'epubcfi(/6/8!/4/2:0)'; local.position.xpointer = '/body/DocFragment[4]/body/p/text().30';
+    local.position.percentage = .7; local.position.updatedAt = 1; local.position.revision = 1;
+    const engine = new ProgressCoordinator(a, {
+      save: async () => {}, active: () => true, status: () => {}, deviceId: '', conflict: () => {},
+      inspect: async remote => ({ cfi: 'epubcfi(/6/6!/4/2:0)', percentage: remote.percentage }),
+      restore: async remote => {
+        const restored = new ReadingPosition(); restored.cfi = 'epubcfi(/6/8!/4/2:0)'; restored.xpointer = remote.progress; return restored;
+      }
+    });
+    await engine.sync(local, 'reconcile'); assert.equal((await b.pull(hash)).percentage, .45);
+    await engine.sync(local, 'keep-local'); assert.equal((await b.pull(hash)).percentage, .7);
+    // After resolving the opening prompt, a deliberate backwards edit uploads.
+    local.position.percentage = .1; local.position.xpointer = '/body/DocFragment[1]/body/p/text().0';
+    local.position.updatedAt = Date.now() + 60000; local.position.revision++; local.dirty = true;
+    await engine.sync(local); assert.equal(local.position.percentage, .1); assert.equal((await b.pull(hash)).percentage, .1);
   } finally { await new Promise(resolve => server.close(resolve)); }
 });

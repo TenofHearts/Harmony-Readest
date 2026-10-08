@@ -101,5 +101,5 @@ export interface SyncTransport {
 export interface ProgressSyncProvider {
   authenticate(): Promise<void>;
   pull(hash: string): Promise<RemoteProgress | null>;
-  push(hash: string, position: ReadingPosition): Promise<void>;
+  push(hash: string, position: ReadingPosition): Promise<RemoteProgress | null>;
 }
