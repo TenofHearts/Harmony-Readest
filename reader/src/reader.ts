@@ -45,7 +45,7 @@ const systemDark = () => nativeSystemDark ?? systemMedia.matches;
 const chrome = createChrome({ emit, getView: () => view, getSettings: () => settings,
   getSystemDark: systemDark,
   getFonts: () => fonts,
-  command: command => (window as any).readerReceive({ version: 1, session, ...command }) });
+  command: command => (window as any).readerReceive({ version: 1, session, ...command, fromChrome: true }) });
 systemMedia.addEventListener('change', () => appearance());
 const unsafeURL = (value: string) => /^(?:https?:|ftp:|javascript:|\/\/)/i.test(value.trim());
 const offlineCSS = (value: string) => value
@@ -149,11 +149,12 @@ function bindGestures(doc: Document) {
     return { x: event.clientX + (frame?.left ?? 0), y: event.clientY + (frame?.top ?? 0) };
   };
   doc.addEventListener('pointerdown', (event: PointerEvent) => {
+    if (chrome.hasOverlay() || (event.target as Element)?.closest?.('#reader-chrome')) return;
     const p = point(event); downX = p.x; downY = p.y; downAt = Date.now();
     userActionUntil = Date.now() + 3000;
   });
   doc.addEventListener('pointerup', (event: PointerEvent) => {
-    if (suppress || !view || event.button !== 0) return;
+    if (suppress || !view || chrome.hasOverlay() || event.button !== 0) return;
     if ((event.target as Element)?.closest?.('#reader-chrome')) return;
     if (doc.getSelection()?.toString() || (event.target as Element)?.closest?.('a')) return;
     const p = point(event), dx = p.x - downX, dy = p.y - downY;
@@ -270,7 +271,10 @@ async function receive(command: any) {
     if (typeof command.systemDark === 'boolean' && command.systemDark !== nativeSystemDark) {
       nativeSystemDark = command.systemDark; appearance();
     }
-    if (['next', 'previous', 'navigate', 'fraction', 'nextSection', 'previousSection', 'historyBack', 'historyForward'].includes(command.type)) userActionUntil = Date.now() + 3000;
+    if (['next', 'previous', 'navigate', 'fraction', 'nextSection', 'previousSection', 'historyBack', 'historyForward'].includes(command.type)) {
+      if (chrome.hasOverlay() && !command.fromChrome) return;
+      userActionUntil = Date.now() + 3000;
+    }
     if (command.type === 'open') await open(command);
     else if (command.type === 'close') { await eventQueue; await close(); emit('closed'); session = ''; }
     else if (command.type === 'next') await view?.next();

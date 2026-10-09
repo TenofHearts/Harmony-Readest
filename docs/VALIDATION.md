@@ -1,5 +1,12 @@
 # Validation
 
+## Reader floating panels and font previews (2026-10-09)
+
+- Floating reader panels keep the heading and upper-right close button outside the scrolling content. An input-blocking backdrop dismisses the panel/menu on an outside tap without turning the page or toggling reader controls. Background keyboard and bridge navigation are blocked; explicit contents/progress navigation remains available within its panel.
+- Font choices use an in-page list with each name rendered in its resolved family, including generic system aliases. Font resources load for visible previews before selection. Keyboard selection and Escape dismissal work, and closing the panel resets expanded lists.
+- All **87 Node tests** pass. Edge browser checks pass all **707 locator oracle words** with no console errors. New checks cover stationary close buttons after phone/tablet scrolling, outside-tap dismissal, real touch swipes, keyboard/wheel/bridge blocking, font loading and measured rendering before selection, keyboard selection and dropdown reset. Production signed/unsigned HAP packaging succeeds.
+- Screenshots: `output/playwright/reader-fixed-close-tablet.png` and `reader-font-previews-phone.png`. These changes have not been installed or checked on a HarmonyOS device.
+
 ## Reader system font rendering fix (2026-10-09)
 
 - The native font chooser previously advertised system fonts while the reader received only imported font resources. System faces now have native binary resources in the reader catalog, without adding them to imported-font persistence or cloud replicas. Custom imports take precedence for a matching family name.

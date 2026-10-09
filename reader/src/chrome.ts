@@ -103,7 +103,12 @@ export function createChrome(host: ChromeHost) {
     const options = key === 'defaultFont' ? ['serif', 'sans-serif'] : [...new Set([fallback, ...host.getFonts().filter(f => !Object.values(builtinFontFamilies).includes(f.family)).map(f => f.family)])];
     const selected = String(host.getSettings()[key]);
     if (!options.includes(selected)) options.push(selected);
-    return `<div class="settings-row"><label for="setting-${key}">${text(labels[key])}</label><select id="setting-${key}" data-setting="${key}" aria-label="${text(labels[key])}">${options.map(value => `<option value="${text(value)}" style="font-family:${text(cssFamily(value || 'system-ui'))}">${text(labels[value] || (value ? value : labels.bookFont))}</option>`).join('')}</select></div>`;
+    const family = (value: string) => text(resolvedFontFamily(value || 'system-ui', host.getFonts()));
+    const label = (value: string) => text(labels[value] || (value ? value : labels.bookFont));
+    return `<div class="settings-row font-row"><label id="label-${key}" for="setting-${key}">${text(labels[key])}</label><div class="font-picker">
+      <button id="setting-${key}" type="button" data-font-picker="${key}" aria-labelledby="label-${key} setting-${key}" aria-haspopup="listbox" aria-expanded="false" aria-controls="options-${key}"><span data-font-label style="font-family:${family(selected)}">${label(selected)}</span><span aria-hidden="true">▾</span></button>
+      <div id="options-${key}" class="font-options" role="listbox" aria-labelledby="label-${key}" hidden>${options.map(value => `<button type="button" role="option" tabindex="-1" data-font-setting="${key}" data-font-value="${text(value)}" aria-selected="${value === selected}" style="font-family:${family(value)}">${label(value)}</button>`).join('')}</div>
+    </div></div>`;
   };
   const boxed = (label: string, rows: string) => `<h3 class="setting-section">${text(labels[label])}</h3><div class="boxed-settings">${rows}</div>`;
   const fontPanel = () => `<div class="font-tabs" role="tablist">${['fonts', 'layout'].map(tab => `<button type="button" role="tab" data-font-tab="${tab}" aria-selected="${fontTab === tab}">${text(labels[tab])}</button>`).join('')}</div>
@@ -127,10 +132,10 @@ export function createChrome(host: ChromeHost) {
   function render() {
     root.innerHTML = `<header class="header-bar" aria-label="${text(title)}" aria-hidden="${!visible}">${button('library')}${button('toc', 'desktop-only')}<div class="header-title">${text(title)}</div><div class="header-end">${button('color', 'desktop-only')}${button('font', 'desktop-only')}${button('menu')}</div></header>
       <footer class="footer-bar" aria-hidden="${!visible}">
-        ${Object.keys(panels).map(key => `<section class="footer-panel" data-panel="${key}" aria-label="${text(labels[key])}" aria-hidden="${panel !== key}"><div class="panel-content"><div class="panel-heading"><span>${text(labels[key])}</span>${button('close')}</div>${panels[key]()}</div></section>`).join('')}
+        ${Object.keys(panels).map(key => `<section class="footer-panel" data-panel="${key}" aria-label="${text(labels[key])}" aria-hidden="${panel !== key}"><div class="panel-heading"><span>${text(labels[key])}</span>${button('close')}</div><div class="panel-scroll"><div class="panel-content">${panels[key]()}</div></div></section>`).join('')}
         <nav class="mobile-tools" aria-label="${text(labels.menu)}">${['toc', 'color', 'progress', 'font'].map(a => button(a)).join('')}</nav>
         <nav class="desktop-tools" aria-label="${text(labels.progress)}">${button('previousSection')}${button('previous')}${button('historyBack')}${button('historyForward')}<output class="percentage">${Math.round(progress)}%</output>${range()}${button('next')}${button('nextSection')}</nav>
-      </footer><div class="view-menu" hidden>${['settings', 'upload', 'reconcile'].map(a => `<button type="button" class="menu-action" data-action="${a}">${text(labels[a])}</button>`).join('')}<div class="sync-status" role="status"></div></div>`;
+      </footer><div class="view-menu" hidden>${['settings', 'upload', 'reconcile'].map(a => `<button type="button" class="menu-action" data-action="${a}">${text(labels[a])}</button>`).join('')}<div class="sync-status" role="status"></div></div><div class="panel-backdrop" hidden></div>`;
     syncVisibility(); updateAppearance(); updatePosition();
   }
   function syncVisibility() {
@@ -140,14 +145,26 @@ export function createChrome(host: ChromeHost) {
     for (const section of root.querySelectorAll<HTMLElement>('[data-panel]')) {
       const active = visible && section.dataset.panel === panel;
       section.setAttribute('aria-hidden', String(!active)); (section as any).inert = !active;
+      if (!active) {
+        for (const list of section.querySelectorAll<HTMLElement>('.font-options')) list.hidden = true;
+        for (const picker of section.querySelectorAll<HTMLElement>('[data-font-picker]')) picker.setAttribute('aria-expanded', 'false');
+      }
     }
     for (const item of root.querySelectorAll<HTMLElement>('[data-action]')) {
       if (panels[item.dataset.action!]) item.setAttribute('aria-expanded', String(panel === item.dataset.action));
+      if (item.dataset.action === 'menu') item.setAttribute('aria-expanded', String(visible && !root.querySelector<HTMLElement>('.view-menu')!.hidden));
     }
     if (!visible) { root.querySelector<HTMLElement>('.view-menu')!.hidden = true; panel = ''; }
+    root.querySelector<HTMLElement>('.panel-backdrop')!.hidden = !hasOverlay();
     if (!visible && root.contains(document.activeElement)) (document.activeElement as HTMLElement).blur();
   }
   function setVisible(value: boolean) { visible = value; if (!visible) panel = ''; syncVisibility(); }
+  function hasOverlay() { return !root.hidden && (Boolean(panel) || !root.querySelector<HTMLElement>('.view-menu')!.hidden); }
+  function dismiss() {
+    if (root.contains(document.activeElement)) (document.activeElement as HTMLElement).blur();
+    panel = ''; root.querySelector<HTMLElement>('.view-menu')!.hidden = true;
+    syncVisibility();
+  }
   function updatePosition() {
     for (const range of root.querySelectorAll<HTMLInputElement>('[data-progress]')) if (document.activeElement !== range) range.value = String(progress);
     for (const value of root.querySelectorAll<HTMLElement>('.percentage')) value.textContent = `${Math.round(progress)}%`;
@@ -158,9 +175,12 @@ export function createChrome(host: ChromeHost) {
     const primary = settings.defaultFont === 'sans-serif' ? resolvedFontFamily(settings.sansSerifFont, host.getFonts(), 'sans-serif') : resolvedFontFamily(settings.serifFont, host.getFonts());
     const family = settings.defaultCJKFont ? `${cssFamily(settings.defaultCJKFont)}, ${primary}` : primary;
     root.style.fontFamily = family;
-    for (const select of root.querySelectorAll<HTMLSelectElement>('select[data-setting]')) {
-      const key = select.dataset.setting as keyof Appearance;
-      select.style.fontFamily = key === 'defaultFont' ? family : cssFamily(String(settings[key]) || 'system-ui');
+    for (const picker of root.querySelectorAll<HTMLButtonElement>('[data-font-picker]')) {
+      const key = picker.dataset.fontPicker as keyof Appearance, value = String(settings[key]);
+      const label = picker.querySelector<HTMLElement>('[data-font-label]')!;
+      label.textContent = labels[value] || value || labels.bookFont;
+      label.style.fontFamily = resolvedFontFamily(value || 'system-ui', host.getFonts());
+      for (const option of root.querySelectorAll<HTMLElement>(`[data-font-setting="${key}"]`)) option.setAttribute('aria-selected', String(option.dataset.fontValue === value));
     }
     const dark = themeIsDark(settings.themeMode, host.getSystemDark());
     const theme = palette(settings.themeColor, dark);
@@ -169,7 +189,7 @@ export function createChrome(host: ChromeHost) {
     root.querySelector<HTMLElement>('[data-font-size]')!.textContent = String(settings.fontSize);
     root.querySelector<HTMLElement>('[data-line-height]')!.textContent = settings.lineHeight.toFixed(1);
     root.querySelector<HTMLInputElement>('#reader-line-height')!.value = String(settings.lineHeight);
-    for (const input of root.querySelectorAll<HTMLInputElement | HTMLSelectElement>('[data-setting]')) {
+    for (const input of root.querySelectorAll<HTMLInputElement>('[data-setting]')) {
       const key = input.dataset.setting as keyof Appearance;
       if (input instanceof HTMLInputElement && input.type === 'checkbox') input.checked = settings[key] as boolean;
       else if (document.activeElement !== input) input.value = String(settings[key]);
@@ -191,19 +211,50 @@ export function createChrome(host: ChromeHost) {
     host.command({ type: 'appearance', settings }); host.emit('appearanceChanged', { settings });
   }
   root.addEventListener('click', event => {
+    const element = event.target as Element;
+    if (hasOverlay() && !element.closest(`[data-panel="${panel}"][aria-hidden="false"], .view-menu:not([hidden])`)) { event.stopPropagation(); dismiss(); return; }
     const target = (event.target as Element).closest<HTMLButtonElement>('button');
     if (!target || target.disabled) return;
     const action = target.dataset.action;
+    if (target.dataset.fontPicker) {
+      const options = root.querySelector<HTMLElement>(`#options-${target.dataset.fontPicker}`)!;
+      const opening = options.hidden;
+      for (const list of root.querySelectorAll<HTMLElement>('.font-options')) list.hidden = true;
+      for (const picker of root.querySelectorAll<HTMLElement>('[data-font-picker]')) picker.setAttribute('aria-expanded', 'false');
+      options.hidden = !opening; target.setAttribute('aria-expanded', String(opening));
+      if (opening) options.querySelector<HTMLElement>('[aria-selected="true"]')?.focus();
+      return;
+    }
+    if (target.dataset.fontSetting) {
+      const key = target.dataset.fontSetting as keyof Appearance;
+      const settings = { ...host.getSettings(), [key]: target.dataset.fontValue, overrideFont: true };
+      if (key === 'serifFont') settings.defaultFont = 'serif';
+      if (key === 'sansSerifFont') settings.defaultFont = 'sans-serif';
+      target.closest<HTMLElement>('.font-options')!.hidden = true;
+      const picker = root.querySelector<HTMLElement>(`[data-font-picker="${key}"]`)!;
+      picker.setAttribute('aria-expanded', 'false'); picker.focus();
+      appearance(settings); return;
+    }
     if (target.dataset.fontTab) { fontTab = target.dataset.fontTab; render(); return; }
     if (target.dataset.toc !== undefined) { host.command({ type: 'navigate', href: toc[Number(target.dataset.toc)].href }); panel = ''; syncVisibility(); }
     else if (target.dataset.theme) appearance({ ...host.getSettings(), themeColor: target.dataset.theme });
     else if (target.dataset.mode) appearance({ ...host.getSettings(), themeMode: target.dataset.mode });
-    else if (action === 'menu') { const menu = root.querySelector<HTMLElement>('.view-menu')!; menu.hidden = !menu.hidden; target.setAttribute('aria-expanded', String(!menu.hidden)); }
+    else if (action === 'menu') { const menu = root.querySelector<HTMLElement>('.view-menu')!; panel = ''; menu.hidden = !menu.hidden; target.setAttribute('aria-expanded', String(!menu.hidden)); syncVisibility(); }
     else if (action && panels[action]) { panel = panel === action ? '' : action; root.querySelector<HTMLElement>('.view-menu')!.hidden = true; syncVisibility(); }
-    else if (action === 'close') { panel = ''; syncVisibility(); }
+    else if (action === 'close') dismiss();
     else if (action === 'decrease' || action === 'increase') appearance({ ...host.getSettings(), fontSize: Math.max(host.getSettings().minimumFontSize, Math.min(120, host.getSettings().fontSize + (action === 'increase' ? 2 : -2))) });
-    else if (['library', 'settings', 'upload', 'reconcile'].includes(action!)) { root.querySelector<HTMLElement>('.view-menu')!.hidden = true; host.emit('readerAction', { action }); }
+    else if (['library', 'settings', 'upload', 'reconcile'].includes(action!)) { dismiss(); host.emit('readerAction', { action }); }
     else if (action) host.command({ type: action });
+  });
+  root.addEventListener('keydown', event => {
+    const target = event.target as HTMLElement;
+    const options = target.closest('.font-options');
+    if (!options || !['ArrowUp', 'ArrowDown', 'Home', 'End'].includes(event.key)) return;
+    event.preventDefault();
+    const items = Array.from(options.querySelectorAll<HTMLElement>('[role="option"]'));
+    const index = items.indexOf(target);
+    const next = event.key === 'Home' ? 0 : event.key === 'End' ? items.length - 1 : (index + (event.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length;
+    items[next]?.focus();
   });
   root.addEventListener('input', event => {
     const target = event.target as HTMLInputElement;
@@ -222,32 +273,30 @@ export function createChrome(host: ChromeHost) {
         if (!target.value.trim() || !Number.isFinite(value) || value < min || value > max || key === 'maxColumnCount' && !Number.isInteger(value)) { updateAppearance(); return; }
         (settings as any)[key] = value;
         if (key === 'minimumFontSize' || key === 'fontSize') settings.fontSize = Math.max(settings.fontSize, settings.minimumFontSize);
-      } else {
-        (settings as any)[key] = target.value;
-        settings.overrideFont = true;
-        if (key === 'serifFont') settings.defaultFont = 'serif';
-        if (key === 'sansSerifFont') settings.defaultFont = 'sans-serif';
-      }
+      } else return;
       appearance(settings);
     }
   });
   document.addEventListener('keydown', event => {
     if (root.hidden) return;
     if (event.key === 'Escape') { event.preventDefault(); back(); }
-    else if (!root.contains(document.activeElement) && ['ArrowLeft', 'ArrowRight'].includes(event.key)) { event.preventDefault(); host.command({ type: event.key === 'ArrowLeft' ? 'previous' : 'next' }); }
+    else if (!hasOverlay() && !root.contains(document.activeElement) && ['ArrowLeft', 'ArrowRight'].includes(event.key)) { event.preventDefault(); host.command({ type: event.key === 'ArrowLeft' ? 'previous' : 'next' }); }
   });
   function back() {
     const menu = root.querySelector<HTMLElement>('.view-menu')!;
-    if (!menu.hidden) menu.hidden = true;
-    else if (panel) { panel = ''; syncVisibility(); }
+    const options = root.querySelector<HTMLElement>('.font-options:not([hidden])');
+    if (options) { options.hidden = true; const picker = root.querySelector<HTMLElement>(`[aria-controls="${options.id}"]`)!; picker.setAttribute('aria-expanded', 'false'); picker.focus(); }
+    else if (!menu.hidden) { menu.hidden = true; syncVisibility(); }
+    else if (panel) dismiss();
     else host.emit('readerAction', { action: 'library' });
   }
   render();
   return {
-    open(bookTitle: string, items: TocItem[]) { title = bookTitle; toc = items; panel = ''; visible = true; render(); root.hidden = false; },
+    open(bookTitle: string, items: TocItem[]) { title = bookTitle; toc = items; panel = ''; visible = true; render(); root.hidden = false; syncVisibility(); },
     close() { root.hidden = true; panel = ''; },
     toggle() { setVisible(!visible); host.emit('toggleControls'); },
     back,
+    hasOverlay,
     appearance: updateAppearance,
     fontsChanged: render,
     position(value: { percentage: number; chapter: string }) { progress = value.percentage * 100; chapter = value.chapter; updatePosition(); },

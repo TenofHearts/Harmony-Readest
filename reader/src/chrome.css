@@ -14,11 +14,15 @@
 #reader-chrome .footer-bar { position: absolute; inset: auto 0 0; background: var(--reader-surface); border-top: 1px solid var(--reader-line); pointer-events: auto; box-shadow: 0 -1px 2px #0000000d; }
 #reader-chrome .mobile-tools { position: relative; z-index: 2; height: 64px; padding: 10px 24px; display: flex; justify-content: space-between; background: var(--reader-inset); }
 #reader-chrome .desktop-tools { display: none; height: 52px; padding: 0 16px; gap: 8px; align-items: center; }
-#reader-chrome .footer-panel { position: absolute; bottom: 64px; left: 0; width: 100%; padding: 24px 16px 16px; background: var(--reader-inset); border-top: 1px solid var(--reader-line); max-height: calc(100vh - 124px); overflow-y: auto; }
+#reader-chrome .footer-panel { position: absolute; bottom: 64px; left: 0; width: 100%; background: var(--reader-inset); border-top: 1px solid var(--reader-line); max-height: calc(100vh - 124px); display: flex; flex-direction: column; overflow: hidden; }
+#reader-chrome .panel-scroll { overflow-y: auto; min-height: 0; padding: 0 16px 16px; overscroll-behavior: contain; }
+#reader-chrome .panel-backdrop { position: absolute; inset: 0; pointer-events: auto; touch-action: none; }
+#reader-chrome .panel-backdrop[hidden] { display: none; }
+#reader-chrome .header-bar, #reader-chrome .footer-bar, #reader-chrome .view-menu { z-index: 1; }
 #reader-chrome .panel-content { max-width: 640px; margin: auto; }
-#reader-chrome .panel-heading { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; font-size: 12px; font-weight: 600; }
+#reader-chrome .panel-heading { display: flex; align-items: center; gap: 12px; flex: 0 0 auto; padding: 12px 16px; font-size: 12px; font-weight: 600; background: var(--reader-inset); }
 #reader-chrome .panel-heading span { flex: 1; }
-#reader-chrome .panel-heading .icon-button { width: 32px; height: 32px; flex-basis: 32px; }
+#reader-chrome .panel-heading .icon-button { width: 44px; height: 44px; flex-basis: 44px; }
 #reader-chrome .progress-caption { display: flex; justify-content: space-between; gap: 20px; font-size: 12px; color: var(--reader-muted); margin-bottom: 12px; }
 #reader-chrome .chapter-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 #reader-chrome .navigation-actions { display: flex; justify-content: space-between; margin-top: 16px; }
@@ -36,14 +40,21 @@
 #reader-chrome .boxed-settings .settings-row { min-height: 56px; padding: 8px 16px; border-bottom: 1px solid var(--reader-line); }
 #reader-chrome .boxed-settings .settings-row:last-child { border-bottom: 0; }
 #reader-chrome .boxed-settings input[type='range'] { padding: 0 16px 12px; height: 40px; }
-#reader-chrome input[type='number'], #reader-chrome select { font: inherit; color: inherit; background: var(--reader-inset); border: 0; border-radius: 8px; padding: 8px; min-width: 0; }
+#reader-chrome input[type='number'] { font: inherit; color: inherit; background: var(--reader-inset); border: 0; border-radius: 8px; padding: 8px; min-width: 0; }
 #reader-chrome input[type='number'] { width: 88px; text-align: center; }
 #reader-chrome .number-stepper { display: flex; align-items: center; border-radius: 8px; background: var(--reader-inset); }
 #reader-chrome .number-stepper .icon-button { width: 32px; height: 32px; flex-basis: 32px; }
 #reader-chrome .number-stepper input { width: 64px; appearance: textfield; }
 #reader-chrome .number-stepper input::-webkit-inner-spin-button { appearance: none; }
 #reader-chrome .visually-hidden { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); }
-#reader-chrome select { max-width: 55%; }
+#reader-chrome .font-row { flex-wrap: wrap; }
+#reader-chrome .font-picker { display: contents; }
+#reader-chrome [data-font-picker] { display: flex; align-items: center; gap: 8px; max-width: 55%; padding: 8px; border-radius: 8px; background: var(--reader-inset); text-align: start; }
+#reader-chrome [data-font-label] { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#reader-chrome .font-options { flex: 0 0 100%; max-height: 240px; overflow-y: auto; overscroll-behavior: contain; border: 1px solid var(--reader-line); border-radius: 8px; }
+#reader-chrome .font-options[hidden] { display: none; }
+#reader-chrome .font-options button { display: block; width: 100%; min-height: 44px; padding: 10px 12px; text-align: start; overflow-wrap: anywhere; }
+#reader-chrome .font-options [aria-selected='true'] { background: var(--reader-inset); }
 #reader-chrome input[type='checkbox'] { appearance: none; width: 40px; height: 24px; flex: 0 0 40px; border-radius: 14px; background: var(--reader-line); position: relative; cursor: pointer; }
 #reader-chrome input[type='checkbox']::after { content: ''; position: absolute; width: 18px; height: 18px; border-radius: 50%; background: var(--reader-surface); top: 3px; left: 3px; }
 #reader-chrome input[type='checkbox']:checked { background: var(--reader-fg); }

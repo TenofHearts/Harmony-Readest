@@ -21,7 +21,7 @@ const strings = {
   scheme_cherry: ['Cherry', '樱桃'], scheme_sky: ['Sky', '天空'], scheme_solarized: ['Solarized', 'Solarized'], scheme_gruvbox: ['Gruvbox', 'Gruvbox'],
   scheme_nord: ['Nord', 'Nord'], scheme_contrast: ['Contrast', '高对比度'], scheme_sunset: ['Sunset', '日落'],
   about_description: ['Readest for HarmonyOS offers a focused EPUB reading experience with an organized bookshelf, customizable reading appearance, and cross-device reading progress synchronization.', 'Readest 鸿蒙版为您提供简洁、专注的 EPUB 阅读体验，支持书籍管理、阅读样式设置与跨设备阅读进度同步。'],
-  about_version: ['Version 0.0.6 · HarmonyOS', '版本 0.0.6 · HarmonyOS'], about_license: ['Licensed under AGPL-3.0-or-later', '遵循 AGPL-3.0-or-later 开源许可'],
+  about_version: ['Version 0.0.7 · HarmonyOS', '版本 0.0.7 · HarmonyOS'], about_license: ['Licensed under AGPL-3.0-or-later', '遵循 AGPL-3.0-or-later 开源许可'],
   contents: ['Contents', '目录'], reading: ['Reading', '阅读中'], sync_now: ['Send progress', '发送进度'], check_remote: ['Check remote', '检查远端'], conflict_title: ['Choose a reading position', '选择阅读位置'],
   conflict_description: ['Reading progress differs between devices. Choose where to continue; automatic uploads are paused until you choose.', '设备之间的阅读位置不同。请选择要继续阅读的位置，自动上传已暂停。'], local: ['This device', '此设备'], remote: ['Other device', '其他设备'], keep_local: ['Continue here', '在此继续'], use_remote: ['Use other position', '采用另一位置'],
   remove_description: ['Remove this book and its local reading data?', '移除此书和本地阅读记录？'], cancel: ['Cancel', '取消'], remove: ['Remove', '移除'],
