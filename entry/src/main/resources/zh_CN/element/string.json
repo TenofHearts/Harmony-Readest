@@ -422,7 +422,7 @@
     },
     {
       "name": "about_version",
-      "value": "版本 0.0.10 · HarmonyOS"
+      "value": "版本 0.0.11 · HarmonyOS"
     },
     {
       "name": "about_license",
@@ -691,6 +691,18 @@
     {
       "name": "go_forward",
       "value": "前进"
+    },
+    {
+      "name": "reference",
+      "value": "参考注释"
+    },
+    {
+      "name": "reference_error",
+      "value": "无法加载此参考注释。"
+    },
+    {
+      "name": "reference_jump",
+      "value": "跳转到位置"
     },
     {
       "name": "error_import_read_failed",

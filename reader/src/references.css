@@ -1,0 +1,15 @@
+#reference-layer { position: fixed; inset: 0; z-index: 20; color: var(--reference-fg); }
+#reference-layer[hidden] { display: none; }
+#reference-layer .reference-backdrop { position: absolute; inset: 0; touch-action: none; }
+#reference-popup { position: absolute; box-sizing: border-box; border: 1px solid var(--reference-line); border-radius: 8px; background: var(--reference-bg); box-shadow: 0 25px 50px -12px #00000040; outline: none; }
+#reference-popup::before { content: ''; position: absolute; width: 12px; height: 12px; left: var(--reference-pointer); top: -7px; transform: translateX(-50%) rotate(45deg); background: var(--reference-bg); border-top: 1px solid var(--reference-line); border-left: 1px solid var(--reference-line); }
+#reference-popup[data-above]::before { top: auto; bottom: -7px; transform: translateX(-50%) rotate(225deg); }
+#reference-popup .reference-content { width: 100%; height: 100%; border-radius: inherit; overflow: hidden; }
+#reference-popup foliate-view { width: 100%; height: 100%; }
+#reference-popup .reference-actions { position: absolute; inset: auto 8px 8px; display: flex; gap: 4px; justify-content: flex-end; pointer-events: none; }
+#reference-popup button { display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; padding: 0; border: 0; border-radius: 50%; background: var(--reference-button); color: inherit; box-shadow: 0 1px 2px #0000000d; cursor: pointer; pointer-events: auto; }
+#reference-popup button[hidden] { display: none; }
+#reference-popup button:hover { background: var(--reference-line); }
+#reference-popup button:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
+#reference-popup svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+#reference-popup .reference-error { margin: 0; padding: 20px 20px 56px; font: 16px/1.6 system-ui; }

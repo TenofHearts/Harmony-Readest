@@ -15,7 +15,7 @@ Readest for HarmonyOS is an independent EPUB reader for phones and tablets, with
 
 ## Reading and bookshelf
 
-Import EPUB books from your device, browse covers and book details, and pick up where you left off. Books and saved reading positions are available offline. Navigate with the table of contents, tap or swipe to turn pages, jump with the progress slider, and choose paginated or scrolling reading. The toolbar and progress bar stay hidden when you open a book; tap the center of the page to show or hide them. Share books through the HarmonyOS share panel.
+Import EPUB books from your device, browse covers and book details, and pick up where you left off. Books and saved reading positions are available offline. Navigate with the table of contents, tap or swipe to turn pages, jump with the progress slider, and choose paginated or scrolling reading. Tap a reference or footnote to read it in a floating preview without losing your place. The toolbar and progress bar stay hidden when you open a book; tap the center of the page to show or hide them. Share books through the HarmonyOS share panel.
 
 ## Bookmarks and highlights
 

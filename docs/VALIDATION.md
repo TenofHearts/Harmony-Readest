@@ -1,5 +1,14 @@
 # Validation
 
+## Floating reference previews (2026-10-10)
+
+- Reference links now open a floating preview below the marker without navigating or changing saved progress. The popup uses the pinned Readest/Foliate extraction path for EPUB/ARIA footnotes, bibliography entries, glossary definitions, superscripts, common footnote classes and isolated numeric markers. Ordinary chapter links still navigate. Unresolvable references display a local error without moving the reader.
+- Appearance follows Readest's `Popup.tsx`: 360 px starting width, responsive viewport bounds, a pointer, 8 px corners, a 1 px translucent content-color border, shadow, light base-300/dark base-100 background and book typography. Near the bottom edge the preview opens above the marker. Long notes scroll inside one renderer; the fixed controls reserve space beneath the text. Linked references have local back history and an optional explicit Jump to Location action.
+- Outside taps, Escape, native Back and close dismiss without turning pages or toggling controls. The background reader and chrome are inert while the popup is open. Rendering waits for extraction; resize, book close, restoration and rapid dismissal clean up the preview. English/Chinese labels use the existing native resource bridge. EPUB frames retain the script-disabled sandbox.
+- All **117 Node tests** pass. The full Edge suite passes **31 browser checks** and **707 locator oracle words**, with no console errors. New checks exercise same/cross-chapter extraction, hidden inline notes, glossary/bibliography content, font/theme inheritance, unchanged CFI/position events, actual long-note scrolling, bottom-edge placement, nested history, dismissal/cancellation, ordinary navigation and explicit jump. The signed/unsigned production HAP builds successfully.
+- Evidence: `output/reference-unit.log`, `output/reference-browser.log`, `output/reference-build.log`, `output/playwright/browser-results.json` and `output/playwright/reader-reference-{phone,dark,tablet}.png`. Screenshots were visually reviewed. This update has not been installed or verified on a HarmonyOS device.
+- Patch metadata bumped to **0.0.11**, with HarmonyOS version code **10010**; app/entry/npm manifests, the npm lockfile and English/Chinese About labels agree. Release validation: `output/reference-release-tests.log` and `output/reference-release-build.log`.
+
 ## Compact syncing settings and patch release (2026-10-10)
 
 - Removed syncing capability lists, multi-account explanations, redundant subtitles and the fixed checksum row. Annotation/font/metadata toggles use compact rows; optional custom headers expand on demand. Removed unused English/Chinese copy and regenerated both packages.

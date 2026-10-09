@@ -422,7 +422,7 @@
     },
     {
       "name": "about_version",
-      "value": "Version 0.0.10 · HarmonyOS"
+      "value": "Version 0.0.11 · HarmonyOS"
     },
     {
       "name": "about_license",
@@ -691,6 +691,18 @@
     {
       "name": "go_forward",
       "value": "Go forward"
+    },
+    {
+      "name": "reference",
+      "value": "Reference"
+    },
+    {
+      "name": "reference_error",
+      "value": "Unable to load this reference."
+    },
+    {
+      "name": "reference_jump",
+      "value": "Jump to Location"
     },
     {
       "name": "error_import_read_failed",

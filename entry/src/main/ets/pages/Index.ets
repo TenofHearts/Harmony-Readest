@@ -262,6 +262,8 @@ struct Index {
       labels['highlights'] = this.t('annotations'); labels['bookmarks'] = this.t('bookmarks'); labels['highlightTab'] = this.t('highlights');
       labels['highlightHint'] = this.t('highlight_hint'); labels['emptyBookmarks'] = this.t('empty_bookmarks'); labels['emptyHighlights'] = this.t('empty_highlights');
       labels['deleteAnnotation'] = this.t('delete'); labels['clearSelection'] = this.t('dismiss');
+      labels['reference'] = this.t('reference'); labels['referenceError'] = this.t('reference_error');
+      labels['referenceBack'] = this.t('go_back'); labels['referenceJump'] = this.t('reference_jump');
       labels['yellow'] = this.t('highlight_yellow'); labels['green'] = this.t('highlight_green'); labels['blue'] = this.t('highlight_blue');
       labels['pink'] = this.t('highlight_pink'); labels['purple'] = this.t('highlight_purple');
       labels["fontSize"] = this.t("font_size");

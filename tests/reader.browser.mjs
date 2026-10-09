@@ -3,6 +3,7 @@ import { createServer } from 'node:http';
 import { readFile, mkdir, writeFile } from 'node:fs/promises';
 import assert from 'node:assert/strict';
 import { BlobWriter, TextReader, ZipWriter } from '@zip.js/zip.js';
+import { referenceFiles, checkReferences } from './references.browser.mjs';
 const fixtureRoot = 'vendor/readest/apps/readest-app/src/__tests__/fixtures';
 const epub = await readFile(`${fixtureRoot}/data/sample-alice.epub`);
 const oracle = JSON.parse(await readFile(`${fixtureRoot}/crengine/sample-alice.json`, 'utf8'));
@@ -20,6 +21,7 @@ async function maliciousEPUB(extra = {}) {
   return Buffer.from(await (await writer.close()).arrayBuffer());
 }
 const evil = await maliciousEPUB();
+const references = await maliciousEPUB(referenceFiles);
 const continuous = await maliciousEPUB({ 'chapter.xhtml': `<html xmlns="http://www.w3.org/1999/xhtml"><head><title>Continuous pages</title></head><body><p>${Array.from({ length: 2400 }, (_, i) => `<span data-word="${i}">word${String(i).padStart(4, '0')}</span>`).join(' ')}</p></body></html>` });
 const drm = await maliciousEPUB({ 'META-INF/encryption.xml': '<encryption xmlns="urn:oasis:names:tc:opendocument:xmlns:container"><EncryptedData xmlns="http://www.w3.org/2001/04/xmlenc#"><EncryptionMethod Algorithm="http://www.w3.org/2001/04/xmlenc#aes128-cbc"/><CipherData><CipherReference URI="chapter.xhtml"/></CipherData></EncryptedData></encryption>' });
 const styled = await maliciousEPUB({ 'chapter.xhtml': '<html xmlns="http://www.w3.org/1999/xhtml"><head><title>Typography</title><style>html{font-family:Georgia}p{font-size:12px;line-height:1.2;margin:3px;text-align:left;text-indent:0;hyphens:none}code{font-family:Georgia}</style></head><body><p id="copy">Publisher font and layout. <span id="tiny" style="font-size:6px">Small print</span></p><pre><code id="code">const reading = true;</code></pre></body></html>' });
@@ -32,8 +34,8 @@ const server = createServer(async (req, res) => {
   try {
     const name = req.url?.split('?')[0];
     if (name === '/fonts/test.ttf') { res.writeHead(200, { 'Content-Type': 'font/ttf' }); res.end(customFontBytes); return; }
-    if (['/books/alice.epub', '/books/evil.epub', '/books/drm.epub', '/books/continuous.epub', '/books/styled.epub'].includes(name)) {
-      res.writeHead(200, { 'Content-Type': 'application/epub+zip' }); res.end(name.includes('styled') ? styled : name.includes('continuous') ? continuous : name.includes('evil') ? evil : name.includes('drm') ? drm : epub); return;
+    if (['/books/alice.epub', '/books/evil.epub', '/books/drm.epub', '/books/continuous.epub', '/books/styled.epub', '/books/references.epub'].includes(name)) {
+      res.writeHead(200, { 'Content-Type': 'application/epub+zip' }); res.end(name.includes('references') ? references : name.includes('styled') ? styled : name.includes('continuous') ? continuous : name.includes('evil') ? evil : name.includes('drm') ? drm : epub); return;
     }
     if (!['/reader/index.html', '/reader/reader.js'].includes(name)) { res.writeHead(404); res.end(); return; }
     res.writeHead(200, { 'Content-Type': name.endsWith('.js') ? 'text/javascript' : 'text/html' });
@@ -768,6 +770,7 @@ try {
   await assertBarsHidden(startup, false);
   await startup.close();
   report.tests.push('Cold reader open with delayed font readiness keeps text and controls hidden until configured chapter/chrome fonts load, then reveals text while bars stay hidden until a center tap');
+  await checkReferences({ page, command, origin, report });
   assert.deepEqual(report.consoleErrors, []);
   await mkdir('output/playwright', { recursive: true });
   await writeFile('output/playwright/browser-results.json', JSON.stringify(report, null, 2));

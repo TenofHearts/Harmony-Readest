@@ -6,6 +6,7 @@ import { BlobReader, BlobWriter, TextWriter, ZipReader, configure } from '@zip.j
 import { partialMD5 } from '../../vendor/readest/apps/readest-app/src/utils/md5';
 import { getCFIFromXPointer, getXPointerFromCFI, XCFI } from '../../vendor/readest/apps/readest-app/src/utils/xcfi';
 import { createChrome } from './chrome';
+import { createReferences } from './references';
 import { Overlayer } from '../../vendor/foliate-js/overlayer.js';
 import { type Annotation, highlightColors, onPage } from './annotations';
 import { palette, themeIsDark } from './palette';
@@ -59,6 +60,11 @@ const chrome = createChrome({ emit, getView: () => view, getSettings: () => sett
   getAnnotations: () => annotations,
   isBookmarked: () => annotations.some(item => item.kind === 'bookmark' && onPage(item.cfi, lastPosition?.cfi || '')),
   command: command => (window as any).readerReceive({ version: 1, session, ...command, fromChrome: true }) });
+const references = createReferences({ getBook: () => book, getSettings: () => settings, getFonts: () => fonts,
+  getFontSources: () => fontSources, getSystemDark: systemDark, getInsets: () => ({ top: safeTop, bottom: safeBottom }),
+  setBlocked: blocked => { if (view) view.inert = blocked; document.getElementById('reader-chrome')!.inert = blocked; },
+  navigate: href => (window as any).readerReceive({ version: 1, session, type: 'navigate', href, fromChrome: true }),
+  clearSelection: () => { selectedText?.doc.getSelection()?.removeAllRanges(); selectedText = undefined; chrome.selection(false); } });
 systemMedia.addEventListener('change', () => appearance());
 const unsafeURL = (value: string) => /^(?:https?:|ftp:|javascript:|\/\/)/i.test(value.trim());
 const offlineCSS = (value: string) => value
@@ -151,6 +157,7 @@ function appearance() {
   };
   for (const [key, value] of Object.entries(attributes)) if (view?.renderer?.getAttribute(key) !== value) view?.renderer?.setAttribute(key, value);
   chrome.appearance();
+  references.appearance();
 }
 
 function bindGestures(doc: Document) {
@@ -176,7 +183,7 @@ function bindGestures(doc: Document) {
     return { x: event.clientX + (frame?.left ?? 0), y: event.clientY + (frame?.top ?? 0) };
   };
   doc.addEventListener('pointerdown', (event: PointerEvent) => {
-    if (chrome.hasOverlay() || (event.target as Element)?.closest?.('#reader-chrome')) return;
+    if (chrome.hasOverlay() || references.active() || (event.target as Element)?.closest?.('#reader-chrome, #reference-layer')) return;
     const p = point(event); downX = p.x; downY = p.y; downAt = Date.now();
     downPointer = event.pointerId;
     // A tap can collapse the selection before pointerup. Remember its state
@@ -190,7 +197,7 @@ function bindGestures(doc: Document) {
     if (downPointer !== event.pointerId) return;
     const selectionAtStart = downSelection;
     downPointer = undefined; downSelection = undefined;
-    if (suppress || !view || chrome.hasOverlay() || event.button !== 0) return;
+    if (suppress || !view || chrome.hasOverlay() || references.active() || event.button !== 0) return;
     if ((event.target as Element)?.closest?.('#reader-chrome')) return;
     if ((event.target as Element)?.closest?.('a')) return;
     const p = point(event), dx = p.x - downX, dy = p.y - downY;
@@ -237,6 +244,7 @@ async function snapshot(location: any, capturedSession: string, restored: boolea
 
 async function close() {
   suppress++;
+  references.dismiss();
   restoreMinimumFont();
   locatorDocuments.clear();
   chrome.close();
@@ -281,7 +289,10 @@ async function open(command: any) {
     document.body.append(view);
     view.addEventListener('load', ({ detail: { doc } }: any) => { bindGestures(doc); enforceMinimumFont(doc, settings.minimumFontSize); });
     view.addEventListener('external-link', (event: Event) => event.preventDefault());
-    view.addEventListener('link', () => { userActionUntil = Date.now() + 1500; });
+    view.addEventListener('link', (event: CustomEvent) => {
+      references.handle(event);
+      if (!event.defaultPrevented) userActionUntil = Date.now() + 1500;
+    });
     view.addEventListener('draw-annotation', ({ detail: { draw, annotation } }: any) => {
       draw(Overlayer.highlight, { color: annotation.color });
     });
@@ -365,7 +376,8 @@ async function receive(command: any) {
       nativeSystemDark = command.systemDark; appearance();
     }
     if (['next', 'previous', 'navigate', 'fraction', 'nextSection', 'previousSection', 'historyBack', 'historyForward'].includes(command.type)) {
-      if (chrome.hasOverlay() && !command.fromChrome) return;
+      if ((chrome.hasOverlay() || references.active()) && !command.fromChrome) return;
+      references.dismiss();
       userActionUntil = Date.now() + 3000;
     }
     if (command.type === 'open') await open(command);
@@ -397,6 +409,7 @@ async function receive(command: any) {
         view?.renderer?.setAttribute('margin-top', `${settings.marginTopPx + safeTop}px`);
         view?.renderer?.setAttribute('margin-bottom', `${settings.marginBottomPx + safeBottom}px`);
       }
+      references.state(command.chrome);
     }
     else if (command.type === 'systemTheme') { /* Theme already applied above, without persisting a user choice. */ }
     else if (command.type === 'fonts') {
@@ -407,7 +420,7 @@ async function receive(command: any) {
       for (const [url, blob] of fontSources) if (!fonts.some(face => face.url === url)) { URL.revokeObjectURL(blob); fontSources.delete(url); }
       chrome.fontsChanged();
     }
-    else if (command.type === 'back') chrome.back();
+    else if (command.type === 'back') { if (references.active()) references.dismiss(); else chrome.back(); }
     else if (command.type === 'appearance') {
       userActionUntil = 0;
       suppress++;
@@ -427,6 +440,7 @@ async function receive(command: any) {
       } });
     }
     else if (command.type === 'restore') {
+      references.dismiss();
       suppress++;
       try {
         let cfi = command.cfi;
