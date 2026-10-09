@@ -6,6 +6,9 @@ import { CloudFiles } from './CloudFiles';
 import { NativeTransport } from './NativeTransport';
 import { ReplicaService } from './ReplicaService';
 import { decideSync } from '../core/SyncPolicy';
+import { remoteToken } from '../core/SyncPolicy';
+import { CloudNote, prepareAnnotations, applyCloudNote, notePayload, noteChange } from '../core/CloudAnnotations';
+import { AnnotationSyncRecord } from '../core/Models';
 
 export interface CloudHooks {
   books: () => BookRecord[];
@@ -15,6 +18,7 @@ export interface CloudHooks {
   sendPosition: (book: BookRecord, position: ReadingPosition) => Promise<RemoteProgress | null>;
   defaults: () => ReaderSettings;
   fallback: (hash: string) => Promise<RemoteProgress | null>;
+  annotations?: (book: BookRecord) => Promise<void>;
 }
 export class CloudSyncService implements ProgressSyncProvider {
   private client: CloudClient = new CloudClient(new NativeTransport());
@@ -57,6 +61,34 @@ export class CloudSyncService implements ProgressSyncProvider {
     }
     await this.store.save(book);
   }
+  private async acceptNote(row: CloudNote, config: ReplicaSettings): Promise<void> {
+    this.active(config);
+    const book = this.hooks.books().find((value: BookRecord) => value.hash === row.book_hash);
+    if (!book || book.cloudDeleted) return;
+    prepareAnnotations(book, config.userId);
+    const changed = applyCloudNote(book, row);
+    await this.store.save(book);
+    if (changed && this.hooks.annotations) await this.hooks.annotations(book);
+  }
+  private async publishNotes(book: BookRecord, config: ReplicaSettings): Promise<void> {
+    if (config.syncAnnotations === false) return;
+    prepareAnnotations(book, config.userId); await this.store.save(book);
+    for (const state of [...book.annotationSync]) {
+      if (!state.dirty) continue;
+      const snapshot = JSON.parse(JSON.stringify(state)) as AnnotationSyncRecord;
+      const result = await this.client.push(config, 'notes', notePayload(book, snapshot)); this.active(config);
+      const row = result.notes?.find((note: CloudNote) => note.id === snapshot.id && note.book_hash === book.hash);
+      if (!row) throw new Error('INVALID_CLOUD');
+      const current = book.annotationSync.find((note: AnnotationSyncRecord) => note.id === snapshot.id);
+      if (current && (current.updatedAt !== snapshot.updatedAt || current.deletedAt !== snapshot.deletedAt)) {
+        // The server may stamp an insert after a concurrent local edit. Keep that edit newer and pending.
+        current.cloudJSON = JSON.stringify(row);
+        if (current.deletedAt) current.deletedAt = Math.max(current.deletedAt, noteChange(row) + 1);
+        else current.updatedAt = Math.max(current.updatedAt, noteChange(row) + 1);
+        await this.store.save(book);
+      } else await this.acceptNote(row, config);
+    }
+  }
   sync(config: ReplicaSettings): Promise<void> {
     const task = this.queue.then(() => this.perform(config)); this.queue = task.catch(() => {}); return task;
   }
@@ -72,15 +104,27 @@ export class CloudSyncService implements ProgressSyncProvider {
     for (const row of configs.configs || []) {
       await this.acceptConfig(row, config); configCursor = Math.max(configCursor, cloudTime(row.updated_at), cloudTime(row.deleted_at));
     }
+    let notesCursor = cursors[2] || 0;
+    if (config.syncAnnotations !== false) {
+      for (const book of this.hooks.books()) prepareAnnotations(book, config.userId);
+      const notes = await this.client.pull(config, 'notes', notesCursor); this.active(config);
+      for (const row of notes.notes || []) {
+        await this.acceptNote(row, config); notesCursor = Math.max(notesCursor, noteChange(row));
+      }
+    }
     // Advance only after every received row was applied. Replays are idempotent.
-    await this.store.saveCloudState(config.userId, [booksCursor, configCursor]); this.hooks.changed();
+    await this.store.saveCloudState(config.userId, [booksCursor, configCursor, notesCursor]); this.hooks.changed();
     this.replica.pendingProgress = 0;
     for (const book of [...this.hooks.books()]) {
       this.active(config);
       if (book.cloudAccount === config.userId && book.cloudUploaded && !book.cloudDeleted && !book.cover) {
         try { await this.downloadCover(book, config); } catch {} this.active(config);
       }
-      if (book.cloudDeleted || !book.hash || !this.files.exists(book.path)) continue;
+      if (book.cloudDeleted || !book.hash) continue;
+      if (!this.files.exists(book.path)) {
+        if (book.cloudAccount === config.userId) await this.publishNotes(book, config);
+        continue;
+      }
       if (book.cloudAccount !== config.userId) {
         book.cloudAccount = config.userId; book.cloudBook = ''; book.cloudConfig = ''; book.cloudUploaded = false;
       }
@@ -99,6 +143,7 @@ export class CloudSyncService implements ProgressSyncProvider {
         for (const row of complete.books || []) await this.acceptBook(row, config);
         if (!book.cloudUploaded) throw new Error('INVALID_CLOUD');
       }
+      await this.publishNotes(book, config);
       // Changing typography must preserve the cloud reading position until reconciled.
       const remote: CloudConfig | null = book.cloudConfig ? JSON.parse(book.cloudConfig) as CloudConfig : null;
       if (!book.style && !remote?.view_settings) {
@@ -123,7 +168,8 @@ export class CloudSyncService implements ProgressSyncProvider {
         if (decision === 'push' || (!remoteProgress && decision === 'none')) {
           book.dirty = true; await this.store.save(book);
           const snapshot = JSON.parse(JSON.stringify(book.position)) as ReadingPosition;
-          await this.hooks.sendPosition(book, snapshot); this.active(config);
+          const ack = await this.hooks.sendPosition(book, snapshot); this.active(config);
+          if (ack) book.remoteToken = remoteToken(ack);
           if (book.position.revision === snapshot.revision) { book.dirty = false; await this.store.save(book); }
         } else this.replica.pendingProgress++;
       }

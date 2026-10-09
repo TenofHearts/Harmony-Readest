@@ -27,9 +27,9 @@ Adjust font size, weight, paragraph spacing, margins, indentation, alignment, an
 
 ## Cross-device sync
 
-Connect an existing Readest account to synchronize EPUB books, covers, reading positions, per-book typography and layout, and custom fonts. Cloud books download when opened and remain available offline.
+Connect an existing Readest account to synchronize EPUB books, covers, reading positions, per-book typography and layout, bookmarks, highlights, and custom fonts. Cloud books download when opened and remain available offline. Fonts and annotations have independent sync switches.
 
-KOReader Sync (KoSync) synchronizes reading positions using the same EPUB, account, and server on each device. When device positions differ, choose where to continue reading. Bookmarks and highlights remain on the device.
+KOReader Sync (KoSync) synchronizes reading positions using the same EPUB, account, and server on each device. Choose Prompt, Always use latest, Send only, or Receive only; sign in or create an account, and configure gateway headers or optional document metadata. Both services work independently and can be connected together. The Syncing page groups Cloud Sync and Reading Sync with separate service settings and status.
 
 ## App language and supported books
 

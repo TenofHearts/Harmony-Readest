@@ -323,14 +323,15 @@ async function open(command: any) {
   } finally { suppress--; }
 }
 
-function annotationsChanged() {
+function annotationsChanged(changes: Annotation[], removed: string[]) {
   chrome.annotationsChanged();
-  emit('annotationsChanged', { annotations });
+  emit('annotationsChanged', { annotations, annotationChanges: changes, removedAnnotations: removed });
 }
 
 async function annotate(command: any) {
   await eventQueue;
   if (!view || !lastPosition) return;
+  const before = new Map(annotations.map(item => [item.id, JSON.stringify(item)]));
   if (command.type === 'bookmark') {
     const existing = annotations.filter(item => item.kind === 'bookmark' && onPage(item.cfi, lastPosition.cfi));
     if (existing.length) annotations = annotations.filter(item => !existing.includes(item));
@@ -352,7 +353,8 @@ async function annotate(command: any) {
     if (item.kind === 'highlight') await view.deleteAnnotation({ value: item.cfi });
     annotations = annotations.filter(item => item.id !== command.id);
   }
-  annotationsChanged();
+  annotationsChanged(annotations.filter(item => before.get(item.id) !== JSON.stringify(item)),
+    [...before.keys()].filter(id => !annotations.some(item => item.id === id)));
 }
 
 async function receive(command: any) {
@@ -367,6 +369,17 @@ async function receive(command: any) {
       userActionUntil = Date.now() + 3000;
     }
     if (command.type === 'open') await open(command);
+    else if (command.type === 'annotations' && Array.isArray(command.annotations)) {
+      for (const item of annotations.filter(item => item.kind === 'highlight')) {
+        try { await view?.deleteAnnotation({ value: item.cfi }); } catch {}
+      }
+      annotations = command.annotations;
+      for (const item of annotations.filter(item => item.kind === 'highlight')) {
+        try { await view?.addAnnotation({ value: item.cfi, color: item.color }); } catch {}
+      }
+      // Remote updates refresh overlays without creating a new local edit or navigating.
+      chrome.annotationsChanged();
+    }
     else if (['bookmark', 'highlight', 'removeAnnotation'].includes(command.type)) await annotate(command);
     else if (command.type === 'clearSelection') { selectedText?.doc.getSelection()?.removeAllRanges(); selectedText = undefined; chrome.selection(false); }
     else if (command.type === 'close') { await eventQueue; await close(); emit('closed'); session = ''; }

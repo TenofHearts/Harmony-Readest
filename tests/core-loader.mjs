@@ -9,6 +9,7 @@ export async function loadCore() {
     export * from './entry/src/main/ets/core/AnnotationPolicy.ets'; export * from './entry/src/main/ets/core/BookDetails.ets';
     export * from './entry/src/main/ets/core/FontPolicy.ets'; export * from './entry/src/main/ets/core/TypographyPolicy.ets';
     export * from './entry/src/main/ets/core/ReplicaClient.ets';
+    export * from './entry/src/main/ets/core/SyncOptions.ets'; export * from './entry/src/main/ets/core/CloudAnnotations.ets';
     export * from './entry/src/main/ets/core/CloudClient.ets'; export * from './entry/src/main/ets/core/CombinedProgress.ets';`, resolveDir: process.cwd() },
     bundle: true, write: false, format: 'esm', platform: 'node',
     resolveExtensions: ['.ets', '.ts', '.js'], plugins: [{ name: 'arkts-core', setup(b) {

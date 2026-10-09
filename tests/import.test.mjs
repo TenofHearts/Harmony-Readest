@@ -128,7 +128,7 @@ test('the combined sync action refreshes the library and reconciles progress onc
   const app = fixture(); const calls = [];
   app.replica.sync = async () => { calls.push('library'); };
   app.sync = async mode => { calls.push(mode); };
-  await app.syncNow(); assert.deepEqual(calls, ['library', 'reconcile']);
+  await app.syncNow(); assert.deepEqual(calls, ['reconcile', 'library']);
 });
 
 test('annotations persist only for the opened current book and reject malformed bridge records', async () => {
@@ -141,6 +141,19 @@ test('annotations persist only for the opened current book and reject malformed 
     { ...event, annotations: [{ ...annotations[0], color: 'url(https://example.com)' }] }]) await app.handle(invalid);
   assert.deepEqual(book.annotations, annotations); assert.equal(importFixture.saved.length, 1);
   await app.handle({ ...event, annotations: [] }); assert.deepEqual(book.annotations, []);
+});
+
+test('annotation deltas preserve a concurrent cloud addition absent from the renderer snapshot', async () => {
+  const app = fixture(); const book = importFixture.draft; app.activeBook = book; app.books = [book];
+  await app.handle({ version: 1, session: app.reader.session, type: 'opened' });
+  const local = { id: 'local', kind: 'highlight', cfi: 'epubcfi(/6/2!/4/2:1)', text: 'Local', chapter: '', percentage: .2, color: '#fff176', createdAt: 10 };
+  const remote = { ...local, id: 'cloud', text: 'Cloud' }; book.annotations = [local, remote];
+  const edit = { ...local, color: '#90caf9' };
+  const event = { version: 1, session: app.reader.session, type: 'annotationsChanged', annotations: [edit], annotationChanges: [edit], removedAnnotations: [] };
+  await app.handle(event);assert.deepEqual(book.annotations, [remote, edit]);
+  await app.handle({ ...event, annotations: [], annotationChanges: [], removedAnnotations: ['local'] });
+  assert.deepEqual(book.annotations, [remote]);assert.ok(book.annotationSync.find(note=>note.id==='local').deletedAt);
+  clearTimeout(app.cloudDebounce);
 });
 
 test('concurrent import taps launch one picker; a picker failure releases the guard for retry', async () => {
@@ -156,13 +169,13 @@ test('concurrent import taps launch one picker; a picker failure releases the gu
   await app.importBooks(); assert.equal(app.busy, false); assert.equal(app.picking, false);
 });
 
-test('book/app openings check remote; reconnect and background use upload-only mode', async () => {
+test('book/app openings and an unresolved reconnect check remote; background stays upload-only', async () => {
   const app = fixture(); const calls = [];
   app.activeBook = importFixture.draft; app.config.enabled = true;
   app.sync = async (mode = 'upload') => { calls.push(mode); };
   await app.handle({ version: 1, session: app.reader.session, type: 'opened' });
   app.onForeground(); app.onNetworkAvailable(); app.onBackground();
-  assert.deepEqual(calls, ['reconcile', 'reconcile', 'upload', 'upload']);
+  assert.deepEqual(calls, ['reconcile', 'reconcile', 'reconcile', 'upload']);
   app.conflict = { progress: '/body/DocFragment[2]/body/p' }; app.blocked = true;
   app.onNetworkAvailable(); app.onBackground(); assert.equal(calls.length, 4);
 });

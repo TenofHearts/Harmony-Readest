@@ -1,5 +1,6 @@
 import { BookRecord, ReaderSettings, ReadingPosition, RemoteProgress, ReplicaSettings, SyncTransport } from './Models';
 import { migrateAppearance, StoredAppearance } from './ThemePolicy';
+import { CloudNote, validCloudNote } from './CloudAnnotations';
 
 export interface CloudBook {
   user_id: string; book_hash: string; format: string; title: string; author: string;
@@ -14,7 +15,7 @@ export interface CloudConfig {
   progress?: string; view_settings?: string; search_config?: string; rsvp_position?: string;
   updated_at?: string; deleted_at?: string;
 }
-export interface CloudResult { books?: CloudBook[]; configs?: CloudConfig[]; }
+export interface CloudResult { books?: CloudBook[]; configs?: CloudConfig[]; notes?: CloudNote[]; }
 export class StorageCondition {
   usage: number = 0; quota: number = 0; totalFiles: number = 0; totalSize: number = 0;
   usagePercentage: number = 0;
@@ -102,9 +103,10 @@ export class CloudClient {
     return response.body;
   }
   private validate(result: CloudResult, account: string): CloudResult {
-    if (!result || (result.books === undefined && result.configs === undefined)) throw new Error('INVALID_CLOUD');
+    if (!result || (result.books === undefined && result.configs === undefined && result.notes === undefined)) throw new Error('INVALID_CLOUD');
     if (result.books && (!Array.isArray(result.books) || !result.books.every((b: CloudBook) => b.user_id === account && /^[a-f0-9]{32}$/.test(b.book_hash) && typeof b.title === 'string' && typeof b.author === 'string'))) throw new Error('INVALID_CLOUD');
     if (result.configs && (!Array.isArray(result.configs) || !result.configs.every((c: CloudConfig) => c.user_id === account && /^[a-f0-9]{32}$/.test(c.book_hash)))) throw new Error('INVALID_CLOUD');
+    if (result.notes && (!Array.isArray(result.notes) || !result.notes.every((note: CloudNote) => validCloudNote(note, account)))) throw new Error('INVALID_CLOUD');
     return result;
   }
   async pull(config: ReplicaSettings, type: string, since: number = 0, hash: string = ''): Promise<CloudResult> {

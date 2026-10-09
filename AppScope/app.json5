@@ -2,8 +2,8 @@
   "app": {
     "bundleName": "app.tenofhearts.harmonyreadest",
     "vendor": "HarmonyReadest",
-    "versionCode": 10008,
-    "versionName": "0.0.9",
+    "versionCode": 10009,
+    "versionName": "0.0.10",
     "buildVersion": "1",
     "icon": "$media:layered_image",
     "label": "$string:app_name"

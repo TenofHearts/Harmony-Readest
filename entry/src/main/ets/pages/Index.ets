@@ -10,6 +10,7 @@ import { AppController } from '../services/AppController';
 import { errorMessage } from '../core/Errors';
 import { ReaderGateway, READER_URL, BRIDGE_PERMISSION } from '../services/ReaderGateway';
 import { BookDetails, bookDetails } from '../core/BookDetails';
+import { KOSYNC_STRATEGIES, parseCustomHeaders, formatCustomHeaders } from '../core/SyncOptions';
 
 class BridgeReceiver {
   private deliver: (value: string) => void;
@@ -77,7 +78,15 @@ struct Index {
   @State syncConfigured: boolean = false;
   @State syncAccount: string = '';
   @State syncServer: string = '';
-  @State expandedSyncServices: string[] = [];
+  @State syncDetail: string = '';
+  @State syncStrategy: string = 'prompt';
+  @State sendMetadata: boolean = false;
+  @State customHeaders: string = '';
+  @State headersExpanded: boolean = false;
+  @State koStatus: string = 'idle';
+  @State koError: string = '';
+  @State koBusy: boolean = false;
+  @State koLastSynced: string = '';
   @State connecting: boolean = false;
   @State savingSyncOptions: boolean = false;
   @State deviceName: string = 'Readest';
@@ -105,6 +114,7 @@ struct Index {
   @State replicaAccount: string = '';
   @State replicaEnabled: boolean = true;
   @State replicaFonts: boolean = true;
+  @State replicaAnnotations: boolean = true;
   @State replicaBusy: boolean = false;
   @State replicaConnecting: boolean = false;
   @State replicaStatus: string = 'idle';
@@ -159,6 +169,8 @@ struct Index {
     this.app.init().then(() => {
       this.server = this.app!.config.serverUrl; this.username = this.app!.config.username;
       this.deviceName = this.app!.config.deviceName; this.syncEnabled = this.app!.config.enabled || !this.username;
+      this.syncStrategy = this.app!.config.strategy; this.sendMetadata = this.app!.config.sendMetadata;
+      this.customHeaders = formatCustomHeaders(this.app!.config.customHeaders);
       this.fontSize = this.app!.appearance.fontSize; this.lineHeight = this.app!.appearance.lineHeight;
       this.refresh();
     }).catch((error: Error) => { this.error = errorMessage(error); });
@@ -166,6 +178,7 @@ struct Index {
 
   aboutToDisappear(): void { AppWindow.changed = () => {}; this.app?.dispose(); }
   onBackPress(): boolean {
+    if (this.settingsOpen && this.settingsTab === 'integrations' && this.syncDetail) { this.syncDetail = ''; return true; }
     if (this.detailsOpen) { this.detailsOpen = false; return true; }
     if (this.fontPicker) { this.fontPicker = ''; return true; }
     if (this.confirmFontRemove) { this.confirmFontRemove = ''; return true; }
@@ -199,6 +212,8 @@ struct Index {
     this.status = this.app.status; this.error = this.app.error;
     this.syncConfigured = !!this.app.config.userkey;
     this.syncAccount = this.app.config.username; this.syncServer = this.app.config.serverUrl;
+    this.koStatus = this.app.koStatus; this.koError = this.app.koError; this.koBusy = this.app.koBusy;
+    this.koLastSynced = this.app.config.lastSyncedAt ? new Date(this.app.config.lastSyncedAt).toLocaleString() : this.t('never_synced');
     if (this.syncConfigured) this.syncEnabled = this.app.config.enabled;
     this.conflict = !!this.app.conflict; this.remotePercent = (this.app.conflictPreview?.percentage ?? this.app.conflict?.percentage ?? 0) * 100;
     this.remoteDevice = this.app.conflict?.device || this.t('remote'); this.remoteChapter = this.app.conflictPreview?.chapter || '';
@@ -216,6 +231,7 @@ struct Index {
     const replica = this.app.replica;
     this.replicaConnected = !!replica.config.userId; this.replicaAccount = replica.config.email;
     this.replicaEnabled = replica.config.enabled; this.replicaFonts = replica.config.syncFonts;
+    this.replicaAnnotations = replica.config.syncAnnotations;
     this.replicaBusy = replica.busy; this.replicaStatus = replica.status; this.replicaError = replica.error;
     this.replicaLastSynced = replica.config.lastSyncedAt ? new Date(replica.config.lastSyncedAt).toLocaleString() : this.t('never_synced');
     this.storageBusy = replica.storageBusy; this.storageError = replica.storageError;
@@ -369,28 +385,32 @@ struct Index {
     settings.themeMode = this.readerThemeMode; settings.themeColor = this.readerThemeColor;
     this.run(() => this.app!.setAppearance(settings));
   }
-  private connect(): void {
+  private connect(register: boolean = false): void {
     const config = new KoSyncSettings(); config.serverUrl = this.server; config.username = this.username;
     config.password = this.password || this.app!.config.password; config.enabled = this.syncEnabled; config.deviceName = this.deviceName;
+    config.strategy = this.syncStrategy; config.sendMetadata = this.sendMetadata;
+    try { config.customHeaders = parseCustomHeaders(this.customHeaders); }
+    catch (error) { this.koError = errorMessage(error as Error); return; }
     this.connecting = true;
-    this.app!.saveConfig(config).then(() => { this.password = ''; }).catch((error: Error) => { this.app!.error = errorMessage(error); })
+    this.app!.saveConfig(config, register).then(() => { this.password = ''; }).catch((error: Error) => { this.app!.koError = errorMessage(error); })
       .finally(() => { this.connecting = false; this.refresh(); });
   }
   private saveSyncOptions(enabled: boolean): void {
     this.syncEnabled = enabled; this.savingSyncOptions = true;
-    this.app!.updateSyncOptions(enabled, this.deviceName).catch((error: Error) => { this.app!.error = errorMessage(error); })
-      .finally(() => { this.savingSyncOptions = false; this.refresh(); });
+    this.app!.updateSyncOptions(enabled, this.deviceName, this.syncStrategy, this.sendMetadata, this.customHeaders).catch((error: Error) => { this.app!.koError = errorMessage(error); })
+      .finally(() => {
+        this.syncStrategy = this.app!.config.strategy; this.sendMetadata = this.app!.config.sendMetadata;
+        this.savingSyncOptions = false; this.refresh();
+      });
   }
   private disconnectSync(): void {
     this.savingSyncOptions = true;
     this.app!.disconnect().then(() => {
       this.username = ''; this.password = ''; this.server = this.app!.config.serverUrl;
       this.deviceName = this.app!.config.deviceName; this.syncEnabled = true;
+      this.customHeaders = ''; this.syncStrategy = 'prompt'; this.sendMetadata = false;
     }).catch((error: Error) => { this.app!.error = errorMessage(error); })
       .finally(() => { this.savingSyncOptions = false; this.refresh(); });
-  }
-  private toggleSyncService(id: string): void {
-    this.expandedSyncServices = this.expandedSyncServices.includes(id) ? this.expandedSyncServices.filter((item: string) => item !== id) : this.expandedSyncServices.concat(id);
   }
   private syncSummary(): string {
     if (!this.syncConfigured) return this.t('not_connected');
@@ -478,9 +498,9 @@ struct Index {
       .finally(() => { if (this.app!.replica.config.userId) this.replicaPassword = ''; this.replicaConnecting = false; this.refresh(); });
   }
 
-  private saveReplicaOptions(enabled: boolean, fonts: boolean): void {
+  private saveReplicaOptions(enabled: boolean, fonts: boolean, annotations: boolean = this.replicaAnnotations): void {
     this.replicaConnecting = true;
-    this.app!.replica.options(enabled, fonts).catch((error: Error) => { this.app!.replica.error = errorMessage(error); })
+    this.app!.replica.options(enabled, fonts, annotations).catch((error: Error) => { this.app!.replica.error = errorMessage(error); })
       .finally(() => { this.replicaConnecting = false; this.refresh(); });
   }
 
@@ -495,7 +515,8 @@ struct Index {
     const keys: string[] = ['AUTH_FAILED', 'HTTPS_REQUIRED', 'NOT_KOSYNC', 'CREDENTIALS_REQUIRED', 'CREDENTIALS_UNAVAILABLE',
       'DUPLICATE_BOOK', 'INVALID_EPUB', 'DRM_OR_ENCRYPTED', 'FIXED_LAYOUT_UNSUPPORTED', 'BOOK_TOO_LARGE', 'UNRESOLVED_POSITION',
       'IMPORT_TIMEOUT', 'READER_TIMEOUT', 'SERVER_ERROR', 'INVALID_PROGRESS', 'IMPORT_READ_FAILED', 'IMPORT_WRITE_FAILED', 'BOOK_NOT_FOUND',
-      'NETWORK_TIMEOUT', 'NETWORK_DNS', 'NETWORK_TLS', 'NETWORK_ERROR', 'INVALID_FONT', 'INVALID_REPLICA', 'SYNC_QUOTA', 'SYNC_CLOCK'];
+      'NETWORK_TIMEOUT', 'NETWORK_DNS', 'NETWORK_TLS', 'NETWORK_ERROR', 'INVALID_FONT', 'INVALID_REPLICA', 'SYNC_QUOTA', 'SYNC_CLOCK',
+      'INVALID_HEADERS', 'ACCOUNT_EXISTS', 'INVALID_CLOUD', 'CLOUD_FILE_MISSING', 'CLOUD_CHECKSUM', 'CLOUD_CONFLICT', 'ANNOTATIONS_LIMIT'];
     return keys.includes(key) ? this.t(`error_${key.toLowerCase()}`) : this.t('error_generic');
   }
 
@@ -982,9 +1003,21 @@ struct Index {
         this.rule()
         this.syncInfoRow(this.t('server_url'), this.syncServer)
         this.rule()
-        this.syncInfoRow(this.t('sync_strategy'), this.t('ask_on_conflict'))
+        Row({ space: 12 }) {
+          Text(this.t('sync_strategy')).fontFamily(this.appFontFamily).fontSize(14).fontColor(this.fg()).layoutWeight(1)
+          Select([{ value: this.t('ask_on_conflict') }, { value: this.t('always_latest') },
+            { value: this.t('send_only') }, { value: this.t('receive_only') }])
+            .selected(KOSYNC_STRATEGIES.indexOf(this.syncStrategy)).font({ size: 13, family: this.appFontFamily }).fontColor(this.fg())
+            .value(this.t(['ask_on_conflict', 'always_latest', 'send_only', 'receive_only'][KOSYNC_STRATEGIES.indexOf(this.syncStrategy)] || 'ask_on_conflict'))
+            .backgroundColor(Color.Transparent).enabled(!this.savingSyncOptions && !this.koBusy)
+            .onSelect((index: number) => { this.syncStrategy = KOSYNC_STRATEGIES[index]; this.saveSyncOptions(this.syncEnabled); })
+        }.constraintSize({ minHeight: 56 }).width('100%').padding({ left: 16, right: 16 })
         this.rule()
-        this.syncInfoRow(this.t('checksum_method'), this.t('file_content'))
+        Row({ space: 12 }) {
+          Text(this.t('send_metadata')).fontFamily(this.appFontFamily).fontSize(14).fontColor(this.fg()).layoutWeight(1)
+          Toggle({ type: ToggleType.Switch, isOn: this.sendMetadata }).selectedColor(this.primary()).enabled(!this.savingSyncOptions)
+            .onChange((value: boolean) => { this.sendMetadata = value; this.saveSyncOptions(this.syncEnabled); })
+        }.height(56).width('100%').padding({ left: 16, right: 16 })
         this.rule()
         Row({ space: 12 }) {
           Text(this.t('device_name')).fontFamily(this.appFontFamily).fontSize(14).fontColor(this.fg()).layoutWeight(1)
@@ -995,16 +1028,24 @@ struct Index {
         }.height(56).width('100%').padding({ left: 16, right: 16 })
         this.rule()
         Column({ space: 12 }) {
-          Text(this.t('kosync_description')).fontFamily(this.appFontFamily).fontSize(12).fontColor(this.muted()).width('100%')
+          this.customHeaderSettings(true)
+          this.syncInfoRow(this.t('last_synced'), this.koLastSynced)
           Row({ space: 12 }) {
-            Text(`${this.t('sync_status')}: ${this.t(`status_${this.status}`)}`).fontFamily(this.appFontFamily).fontSize(12).fontColor(this.muted()).layoutWeight(1)
+            Text(this.t(`status_${this.koStatus}`)).fontFamily(this.appFontFamily).fontSize(12).fontColor(this.muted()).layoutWeight(1)
+            if (this.koBusy) { LoadingProgress().width(20).height(20).color(this.primary()) }
+          }.width('100%')
+          if (!this.reading) { Text(this.t('open_book_to_sync')).fontFamily(this.appFontFamily).fontSize(12).fontColor(this.muted()).width('100%') }
+          Row({ space: 12 }) {
+            Button(this.t('sync_replica_now')).height(40).fontFamily(this.appFontFamily).fontSize(13).fontColor(this.primaryText()).backgroundColor(this.primary()).borderRadius(8)
+              .enabled(this.reading && this.syncEnabled && !this.koBusy && !this.savingSyncOptions)
+              .onClick(() => this.run(() => this.app!.sync('reconcile')))
+            Blank()
             Button(this.t('disconnect')).height(40).fontFamily(this.appFontFamily).fontSize(13).fontColor(this.activeDark() ? '#ff9393' : '#913d35')
-              .backgroundColor(Color.Transparent).borderRadius(8).enabled(!this.savingSyncOptions).onClick(() => this.disconnectSync())
+              .backgroundColor(Color.Transparent).borderRadius(8).enabled(!this.savingSyncOptions && !this.koBusy).onClick(() => this.disconnectSync())
           }.width('100%')
         }.padding(16).width('100%')
       } else {
         Column({ space: 16 }) {
-          Text(this.t('kosync_connect_description')).fontFamily(this.appFontFamily).fontSize(13).fontColor(this.muted()).width('100%')
           Column({ space: 8 }) {
             Text(this.t('server_url')).fontFamily(this.appFontFamily).fontSize(12).fontColor(this.muted()).width('100%')
             TextInput({ text: this.server, placeholder: 'https://sync.koreader.rocks' }).fontFamily(this.appFontFamily).fontSize(14).fontColor(this.fg())
@@ -1020,7 +1061,11 @@ struct Index {
             TextInput({ text: this.password, placeholder: this.t('password') }).type(InputType.Password).fontFamily(this.appFontFamily).fontSize(14)
               .fontColor(this.fg()).backgroundColor(this.inset()).borderRadius(8).enabled(!this.connecting).onChange((value: string) => { this.password = value; })
           }.width('100%')
+          this.customHeaderSettings(false)
           Row() {
+            Button(this.t('create_account')).height(40).fontFamily(this.appFontFamily).fontSize(13).fontColor(this.primary())
+              .backgroundColor(Color.Transparent).borderRadius(8)
+              .enabled(!this.connecting && !!this.server.trim() && !!this.username.trim() && !!this.password).onClick(() => this.connect(true))
             Blank()
             if (this.connecting) { LoadingProgress().width(24).height(24).color(this.primary()).margin({ right: 12 }) }
             Button(this.t('connect_save')).height(40).fontFamily(this.appFontFamily).fontSize(14).backgroundColor(this.primary()).fontColor(this.primaryText()).borderRadius(8)
@@ -1028,7 +1073,29 @@ struct Index {
           }.width('100%')
         }.padding(16).width('100%')
       }
-    }.width('100%')
+      if (this.koError) {
+        Text(this.localizedError(this.koError)).fontFamily(this.appFontFamily).fontSize(12).fontColor(this.activeDark() ? '#ff9393' : '#913d35')
+          .width('100%').padding({ left: 16, right: 16, bottom: 16 })
+      }
+    }.width('100%').backgroundColor(this.surface()).borderRadius(12).border({ width: 1, color: this.dividerTone() })
+  }
+
+  @Builder
+  customHeaderSettings(connected: boolean) {
+    Column({ space: 8 }) {
+      Button({ type: ButtonType.Normal }) {
+        Row({ space: 8 }) {
+          Text(this.t('custom_headers')).fontFamily(this.appFontFamily).fontSize(13).fontColor(this.fg()).layoutWeight(1)
+          Stack() { this.icon('back', 16) }.width(20).height(20).rotate({ angle: this.headersExpanded ? 270 : 180 })
+        }.width('100%').height(40)
+      }.width('100%').padding(0).backgroundColor(Color.Transparent)
+        .enabled(!this.connecting && !this.savingSyncOptions).onClick(() => { this.headersExpanded = !this.headersExpanded; })
+      if (this.headersExpanded) {
+        TextArea({ text: this.customHeaders, placeholder: 'Header-Name: value' }).height(100).fontSize(13).fontColor(this.fg()).backgroundColor(this.inset()).borderRadius(8)
+          .enabled(!this.connecting && !this.savingSyncOptions).onChange((value: string) => { this.customHeaders = value; })
+          .onBlur(() => { if (connected && !this.savingSyncOptions) this.saveSyncOptions(this.syncEnabled); })
+      }
+    }.width('100%').alignItems(HorizontalAlign.Start)
   }
 
   @Builder
@@ -1043,16 +1110,17 @@ struct Index {
         this.rule()
         this.syncInfoRow(this.t('account'), this.replicaAccount)
         this.rule()
-        this.syncInfoRow(this.t('replica_data'), this.t('replica_data_value'))
+        Row() {
+          Text(this.t('annotations')).fontFamily(this.appFontFamily).fontSize(14).fontColor(this.fg()).layoutWeight(1)
+          Toggle({ type: ToggleType.Switch, isOn: this.replicaAnnotations }).selectedColor(this.primary()).enabled(!this.replicaConnecting)
+            .onChange((value: boolean) => this.saveReplicaOptions(this.replicaEnabled, this.replicaFonts, value))
+        }.width('100%').height(56).padding({ left: 16, right: 16 })
         this.rule()
         Row() {
-          Column({ space: 4 }) {
-            Text(this.t('fonts')).fontFamily(this.appFontFamily).fontSize(14).fontColor(this.fg())
-            Text(this.t('replica_fonts_description')).fontFamily(this.appFontFamily).fontSize(12).fontColor(this.muted())
-          }.layoutWeight(1).alignItems(HorizontalAlign.Start)
+          Text(this.t('fonts')).fontFamily(this.appFontFamily).fontSize(14).fontColor(this.fg()).layoutWeight(1)
           Toggle({ type: ToggleType.Switch, isOn: this.replicaFonts }).selectedColor(this.primary()).enabled(!this.replicaConnecting)
             .onChange((value: boolean) => this.saveReplicaOptions(this.replicaEnabled, value))
-        }.width('100%').padding(16)
+        }.width('100%').height(56).padding({ left: 16, right: 16 })
         this.rule()
         this.syncInfoRow(this.t('last_synced'), this.replicaLastSynced)
         this.rule()
@@ -1071,13 +1139,12 @@ struct Index {
         }.padding(16).width('100%')
         this.rule()
         Column({ space: 8 }) {
-          Text(this.t('replica_description')).fontFamily(this.appFontFamily).fontSize(12).fontColor(this.muted()).width('100%')
           Text(this.t(`replica_status_${this.replicaStatus}`)).fontFamily(this.appFontFamily).fontSize(12).fontColor(this.muted()).width('100%')
           if (this.pendingCloudProgress > 0) { Text(this.t('cloud_progress_pending').replace('{count}', `${this.pendingCloudProgress}`)).fontFamily(this.appFontFamily).fontSize(12).fontColor(this.muted()).width('100%') }
           Row({ space: 8 }) {
             Button(this.t('sync_replica_now')).height(40).fontFamily(this.appFontFamily).fontSize(13).fontColor(this.primaryText()).backgroundColor(this.primary()).borderRadius(8)
               .enabled(this.replicaEnabled && !this.replicaBusy && !this.replicaConnecting)
-              .onClick(() => this.run(() => this.app!.replica.sync()))
+              .onClick(() => this.run(() => this.app!.syncNow()))
             Blank()
             Button(this.t('disconnect')).height(40).fontFamily(this.appFontFamily).fontSize(13).fontColor(this.activeDark() ? '#ff9393' : '#913d35')
               .backgroundColor(Color.Transparent).borderRadius(8).enabled(!this.replicaConnecting)
@@ -1090,7 +1157,6 @@ struct Index {
         }.padding(16).width('100%')
       } else {
         Column({ space: 12 }) {
-          Text(this.t('replica_connect_description')).fontFamily(this.appFontFamily).fontSize(13).fontColor(this.muted()).width('100%')
           TextInput({ text: this.replicaEmail, placeholder: this.t('email') }).type(InputType.Email).fontFamily(this.appFontFamily).fontSize(14).fontColor(this.fg())
             .backgroundColor(this.inset()).borderRadius(8).enabled(!this.replicaConnecting).onChange((value: string) => { this.replicaEmail = value; })
           TextInput({ text: this.replicaPassword, placeholder: this.t('password') }).type(InputType.Password).fontFamily(this.appFontFamily).fontSize(14).fontColor(this.fg())
@@ -1103,7 +1169,7 @@ struct Index {
         Text(this.localizedError(this.replicaError)).fontFamily(this.appFontFamily).fontSize(12).fontColor(this.activeDark() ? '#ff9393' : '#913d35')
           .width('100%').padding({ left: 16, right: 16, bottom: 16 })
       }
-    }.width('100%')
+    }.width('100%').backgroundColor(this.surface()).borderRadius(12).border({ width: 1, color: this.dividerTone() })
   }
 
   @Builder
@@ -1119,24 +1185,40 @@ struct Index {
             Text(title).fontFamily(this.appFontFamily).fontSize(14).fontWeight(FontWeight.Medium).fontColor(this.fg()).width('100%')
             Text(summary).fontFamily(this.appFontFamily).fontSize(12).fontColor(this.muted()).width('100%').maxLines(2).textOverflow({ overflow: TextOverflow.Ellipsis })
           }.layoutWeight(1).alignItems(HorizontalAlign.Start)
-          Stack() { this.icon('back', 18) }.width(20).height(20).rotate({ angle: this.expandedSyncServices.includes(id) ? -90 : 180 })
+          if ((id === 'readest' && this.replicaConnected) || (id === 'kosync' && this.syncConfigured)) {
+            Text(this.t((id === 'readest' ? this.replicaEnabled : this.syncEnabled) ? 'sync_on' : 'sync_off')).fontFamily(this.appFontFamily)
+              .fontSize(11).fontColor(this.primary()).padding({ left: 8, right: 8, top: 4, bottom: 4 }).backgroundColor(this.inset()).borderRadius(12)
+          }
+          Stack() { this.icon('back', 18) }.width(20).height(20).rotate({ angle: 180 })
         }.width('100%').padding({ left: 16, right: 16, top: 12, bottom: 12 }).constraintSize({ minHeight: 72 })
       }.width('100%').padding(0).backgroundColor(Color.Transparent).borderRadius(12)
-        .accessibilityText(`${title}, ${summary}, ${this.t(this.expandedSyncServices.includes(id) ? 'collapse' : 'expand')}`).onClick(() => this.toggleSyncService(id))
-      if (this.expandedSyncServices.includes(id)) {
-        this.rule()
-        if (id === 'kosync') { this.koSyncSettings() }
-        if (id === 'readest') { this.replicaSettings() }
-      }
+        .accessibilityText(`${title}, ${summary}`).onClick(() => { this.syncDetail = id; })
     }.width('100%').backgroundColor(this.surface()).borderRadius(12).border({ width: 1, color: this.dividerTone() })
   }
 
   @Builder
   syncSettings() {
-    this.sectionTitle(this.t('replica_syncing'))
-    this.syncService('readest', this.t('readest_replica_sync'), this.replicaConnected ? this.t('connected_as').replace('{account}', this.replicaAccount) : this.t('not_connected'), 'integrations')
-    this.sectionTitle(this.t('reading_sync'))
-    this.syncService('kosync', this.t('kosync_title'), this.syncSummary(), 'book')
+    if (this.syncDetail) {
+      Row({ space: 8 }) {
+        this.iconButton('back', this.t('integrations'), () => { this.syncDetail = ''; })
+        Text(this.t('integrations')).fontFamily(this.appFontFamily).fontSize(13).fontColor(this.muted())
+      }.width('100%').margin({ top: 12 })
+      Column({ space: 8 }) {
+        Text(this.t(this.syncDetail === 'readest' ? 'readest_cloud' : 'kosync_title')).fontFamily(this.appFontFamily).fontSize(22).fontWeight(FontWeight.Medium).fontColor(this.fg()).width('100%')
+        Text(this.syncDetail === 'readest' ? (this.replicaConnected ? this.replicaAccount : this.t('not_connected')) : this.syncSummary())
+          .fontFamily(this.appFontFamily).fontSize(13).fontColor(this.muted()).width('100%')
+      }.width('100%').padding({ top: 12, bottom: 20 })
+      if (this.syncDetail === 'readest') { this.replicaSettings() }
+      else { this.koSyncSettings() }
+    } else {
+      Column({ space: 8 }) {
+        Text(this.t('integrations')).fontFamily(this.appFontFamily).fontSize(22).fontWeight(FontWeight.Medium).fontColor(this.fg()).width('100%')
+      }.width('100%').padding({ top: 20, bottom: 4 })
+      this.sectionTitle(this.t('cloud_sync'))
+      this.syncService('readest', this.t('readest_cloud'), this.replicaConnected ? (this.replicaEnabled ? this.replicaAccount : this.t('sync_paused')) : this.t('not_connected'), 'integrations')
+      this.sectionTitle(this.t('reading_sync'))
+      this.syncService('kosync', this.t('kosync_title'), this.syncSummary(), 'book')
+    }
   }
 
   @Builder

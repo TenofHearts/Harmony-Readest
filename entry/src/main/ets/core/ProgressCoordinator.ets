@@ -9,6 +9,7 @@ export interface SyncHooks {
   active: () => boolean;
   status: (value: string) => void;
   conflict: (remote: RemoteProgress, preview?: ReadingPosition) => void;
+  strategy?: string;
 }
 
 // Native and web rendering details stay outside this coordinator.
@@ -21,6 +22,8 @@ export class ProgressCoordinator {
   private pendingRemote?: RemoteProgress;
   constructor(provider: ProgressSyncProvider, hooks: SyncHooks) { this.provider = provider; this.hooks = hooks; }
 
+  needsReconciliation(): boolean { return !this.reconciled && !this.awaitingChoice; }
+
   sync(book: BookRecord, mode: string = 'upload'): Promise<void> {
     const task = this.queue.then(() => this.run(book, mode));
     this.queue = task.catch(() => {});
@@ -31,7 +34,7 @@ export class ProgressCoordinator {
   // Unresolved choices and newer revisions retain the same protection as reading uploads.
   uploadPending(book: BookRecord, active: () => boolean): Promise<void> {
     const task = this.queue.then(async () => {
-      if (!this.reconciled || this.awaitingChoice || !book.dirty || !book.hash || !active()) return;
+      if (!this.reconciled || this.awaitingChoice || this.hooks.strategy === 'receive' || !book.dirty || !book.hash || !active()) return;
       const snapshot = JSON.parse(JSON.stringify(book.position)) as ReadingPosition;
       const ack = await this.provider.push(book.hash, snapshot);
       if (!active()) return;
@@ -44,18 +47,30 @@ export class ProgressCoordinator {
 
   private async run(book: BookRecord, mode: string): Promise<void> {
     if (!this.hooks.active() || !book.hash) return;
-    if (mode === 'upload' && (!this.reconciled || this.awaitingChoice)) return;
+    const strategy = this.hooks.strategy || 'prompt';
+    if (strategy === 'receive' && (mode === 'manual-upload' || mode === 'keep-local')) return;
+    if (mode === 'upload' && (!this.reconciled || this.awaitingChoice || !book.dirty || strategy === 'receive')) return;
     if (mode === 'reconcile') this.reconciled = false;
     this.hooks.status('checking');
     try {
       // Only opening a book/app reconciles with remote. Reading and reconnecting
       // publish this device's resume position without fetching another position.
       const choosing = mode === 'keep-local' || mode === 'use-remote';
-      const remote = choosing ? this.pendingRemote || null : mode === 'reconcile' ? await this.provider.pull(book.hash) : null;
+      const remote = choosing ? this.pendingRemote || null : mode === 'reconcile' && strategy !== 'send' ? await this.provider.pull(book.hash) : null;
       if (!this.hooks.active()) return;
       if (choosing && !remote) return;
       let decision = mode === 'upload' || mode === 'manual-upload' || mode === 'keep-local' ? 'push' :
         mode === 'use-remote' ? 'pull' : decideSync(book, remote);
+      if (mode === 'reconcile' && strategy === 'receive') {
+        // An acknowledged report can still differ after local reading. Receive
+        // only restores that report on the next check, even if its token repeats.
+        const matches = remote && (remote.cfi ? remote.cfi === book.position.cfi : !!remote.progress && remote.progress === book.position.xpointer);
+        decision = remote && !matches ? 'pull' : 'none';
+      }
+      if (mode === 'reconcile' && strategy === 'silent' && decision === 'conflict' && remote?.timestamp && book.position.updatedAt) {
+        if (remote.timestamp * 1000 > book.position.updatedAt) decision = 'pull';
+        else if (remote.timestamp * 1000 < book.position.updatedAt) decision = 'push';
+      }
       if (decision === 'conflict' && remote) {
         let preview: ReadingPosition | undefined;
         let differs = true;
@@ -103,9 +118,20 @@ export class ProgressCoordinator {
         book.remoteToken = ack?.timestamp ? remoteToken(ack) : uploadedToken(snapshot.xpointer, snapshot.percentage, ack?.device_id || '');
         if (canAcknowledge(snapshot.revision, book.position.revision)) book.dirty = false;
         await this.hooks.save(book);
+      } else if (mode === 'reconcile' && remote) {
+        book.remoteToken = remoteToken(remote);
+        if (this.provider.acceptRemote && strategy !== 'receive') {
+          const snapshot = JSON.parse(JSON.stringify(book.position)) as ReadingPosition;
+          // Even an already matching Readest position must converge its KoSync mirror.
+          book.dirty = true; await this.hooks.save(book);
+          await this.provider.acceptRemote(book.hash, snapshot);
+          if (!this.hooks.active()) return;
+          if (canAcknowledge(snapshot.revision, book.position.revision)) book.dirty = false;
+        }
+        await this.hooks.save(book);
       }
       this.reconciled = true; this.awaitingChoice = false; this.pendingRemote = undefined;
-      this.hooks.status(book.dirty ? 'pending' : 'synced');
+      this.hooks.status(book.dirty && strategy !== 'receive' ? 'pending' : 'synced');
     } catch (error) { this.hooks.status('error'); throw error as Error; }
   }
 }

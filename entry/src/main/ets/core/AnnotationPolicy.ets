@@ -12,7 +12,7 @@ export function validAnnotations(items: BookAnnotation[]): boolean {
       !item.cfi.startsWith('epubcfi(') || !item.cfi.endsWith(')') || item.cfi.length > 8192 ||
       typeof item.text !== 'string' || item.text.length > 16384 || typeof item.chapter !== 'string' || item.chapter.length > 1024 ||
       !Number.isFinite(item.percentage) || item.percentage < 0 || item.percentage > 1 ||
-      !Number.isFinite(item.createdAt) || item.createdAt <= 0 || !HIGHLIGHT_COLORS.includes(item.color)) return false;
+      !Number.isFinite(item.createdAt) || item.createdAt <= 0 || (!HIGHLIGHT_COLORS.includes(item.color) && !/^#[0-9a-f]{6}$/i.test(item.color))) return false;
     ids.push(item.id);
   }
   return true;

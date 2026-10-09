@@ -1,5 +1,19 @@
 # Validation
 
+## Compact syncing settings and patch release (2026-10-10)
+
+- Removed syncing capability lists, multi-account explanations, redundant subtitles and the fixed checksum row. Annotation/font/metadata toggles use compact rows; optional custom headers expand on demand. Removed unused English/Chinese copy and regenerated both packages.
+- Bumped app, entry package, npm manifests and About labels to **0.0.10**, with HarmonyOS version code **10009**. All **117 Node tests** pass and the signed release HAP builds successfully. Logs: `output/sync-release-tests.log`, `output/sync-release-build.log`. The native page still needs an on-device visual review.
+
+## Complete existing-feature syncing and service settings (2026-10-09)
+
+- Reproduced and fixed two Readest-only progress failures: the Replica callback republished clean local positions over another device's newer position, and a failed initial reconciliation never recovered on timer/network retry. Manual Sync now checks before automatic publication; unresolved choices remain pending and the Readest card reports them.
+- Readest sync covers EPUB library/files/covers, saved positions, per-book typography/layout, bookmarks/highlights and custom fonts. Notes use the pinned Readest API with stable IDs, durable offline tombstones, update/deletion merge rules, separate cursors/category switches and protection against concurrent local edits. Unsupported Readest note fields survive supported highlight edits. Native annotation deltas prevent a stale renderer snapshot from deleting concurrent cloud additions.
+- KoSync works independently, supports Prompt/Always use latest/Send only/Receive only, explicit account creation, custom gateway headers, optional document metadata, separate status and encrypted credentials. Closed-book offline edits retry conservatively after reconnect/restart. Receive only suppresses automatic/explicit/close uploads and restores a repeated remote report after local reading. With both services enabled, Readest remains primary and the chosen position is mirrored according to KoSync's direction setting.
+- The Syncing page uses Readest-style Cloud Sync/Reading Sync groups and dedicated service pages with back navigation, independent controls/status/errors, font/annotation category switches and cloud storage figures. English/Chinese labels are regenerated. A source comment requires new persistent user features to include payloads, merge/deletion behavior and round-trip tests. Ordinary global appearance defaults, built-in themes and UI language remain device-local under the pinned Readest protocol.
+- All **117 Node regression tests** pass. The real Edge reader suite passes **707 locator oracle words** and **28 browser checks** with no console errors, including remote bookmark/highlight refresh without navigation or local-edit echoes and rejection of stale-session deletes. Production signed/unsigned HAP and native Hypium test HAP packaging succeed. Logs: `output/sync-tests.log`, `output/sync-browser.log`, `output/sync-build.log`, `output/sync-hypium-build.log`.
+- `hdc list targets` returns **Empty**. This update was not installed on a device; the redesigned native page has compile coverage but no current physical phone/tablet visual review. Native Hypium runtime and live Readest/KoSync cross-device checks remain pending. Local transport/platform fixtures verify protocol behavior, not live service acceptance.
+
 ## Anchored shelf dropdown and first-render fonts (2026-10-09)
 
 - Shelf layout/sort options now use a native popup anchored below the layout button, with a 4 vp gap and no arrow. A transparent input mask consumes outside taps and dismisses the list; selecting an option or pressing Back also closes it. Native popup state updates the toggle state, so it can reopen normally.

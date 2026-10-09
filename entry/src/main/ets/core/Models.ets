@@ -23,6 +23,8 @@ export class BookMetadata {
 
 export class BookRecord {
   annotations: BookAnnotation[] = [];
+  annotationSync: AnnotationSyncRecord[] = [];
+  annotationsAccount: string = '';
   metadataJSON: string = '';
   id: string = '';
   title: string = '';
@@ -46,6 +48,14 @@ export class BookRecord {
   style: ReaderSettings | null = null;
   styleUpdatedAt: number = 0;
   styleDirty: boolean = false;
+}
+
+export class AnnotationSyncRecord {
+  id: string = '';
+  updatedAt: number = 0;
+  deletedAt: number = 0;
+  dirty: boolean = true;
+  cloudJSON: string = '';
 }
 
 export class BookAnnotation {
@@ -126,6 +136,7 @@ export class ReplicaSettings {
   email: string = '';
   enabled: boolean = true;
   syncFonts: boolean = true;
+  syncAnnotations: boolean = true;
   cursor: string = '';
   clock: string = '';
   lastSyncedAt: number = 0;
@@ -141,6 +152,10 @@ export class KoSyncSettings {
   enabled: boolean = false;
   deviceName: string = 'Readest';
   deviceId: string = '';
+  strategy: string = 'prompt';
+  sendMetadata: boolean = false;
+  customHeaders: Record<string, string> = {};
+  lastSyncedAt: number = 0;
 }
 
 export interface RemoteProgress {
@@ -151,7 +166,10 @@ export interface RemoteProgress {
   timestamp?: number;
   device?: string;
   device_id?: string;
+  metadata?: DocumentMetadata;
 }
+
+export interface DocumentMetadata { filename: string; title: string; authors: string; }
 
 export class ReaderCommand {
   annotations?: BookAnnotation[];
@@ -183,6 +201,8 @@ export class ReaderChromeState {
 
 export interface ReaderEvent {
   annotations?: BookAnnotation[];
+  annotationChanges?: BookAnnotation[];
+  removedAnnotations?: string[];
   version: number;
   session: string;
   type: string;

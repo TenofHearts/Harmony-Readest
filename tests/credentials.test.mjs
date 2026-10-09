@@ -67,9 +67,10 @@ test('first credential save creates the missing key; encrypted Unicode credentia
   const settings = { username: '测试-reader', password: '密码-🔐', serverUrl: 'https://sync.example' };
   await vault.prepare(settings); await vault.save(settings); assert.equal(f.generated, 1);
   assert.ok(!f.data.get('sealed').includes(settings.password));
-  assert.deepEqual(await vault.load(), settings);
+  const migrated = value => ({ ...value, strategy: 'prompt', customHeaders: {}, sendMetadata: false, lastSyncedAt: 0 });
+  assert.deepEqual(await vault.load(), migrated(settings));
   settings.password = 'updated'; await vault.prepare(settings); await vault.save(settings);
-  assert.equal(f.generated, 1); assert.deepEqual(await vault.load(), settings);
+  assert.equal(f.generated, 1); assert.deepEqual(await vault.load(), migrated(settings));
   const sealed = JSON.parse(f.data.get('sealed')); const bytes = Buffer.from(sealed.ciphertext, 'base64'); bytes[0] ^= 1;
   sealed.ciphertext = bytes.toString('base64'); f.data.set('sealed', JSON.stringify(sealed));
   await assert.rejects(vault.load());
@@ -93,5 +94,5 @@ test('Readest tokens use a separate encrypted vault and clearing them cannot cha
   await replica.saveText(session); assert.equal(await replica.loadText(), session);
   assert.ok(!replicaData.get('sealed').includes('fixture-access-token')); assert.equal(f.keys.size, 2);
   await replica.clear(); assert.equal(await replica.loadText(), '');
-  assert.equal(f.data.get('sealed'), koCipher); assert.deepEqual(await ko.load(), credentials);
+  assert.equal(f.data.get('sealed'), koCipher); assert.deepEqual(await ko.load(), { ...credentials, strategy: 'prompt', customHeaders: {}, sendMetadata: false, lastSyncedAt: 0 });
 });

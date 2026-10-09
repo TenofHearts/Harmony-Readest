@@ -716,6 +716,19 @@ try {
   await page.locator('[data-action="share"]').click();
   assert.equal(await page.evaluate(() => window.events.filter(e => e.type === 'readerAction').at(-1).action), 'share');
   report.tests.push('Bookmarks toggle and navigate; highlights capture selected text, recolor, render, survive reopening, delete, and reject stale sessions; phone/tablet menus contain Theme, Font & Layout, Share and one Sync action');
+  const beforeCloudAnnotations = await page.evaluate(() => ({ cfi: window.readerTest.getView().lastLocation.cfi,
+    edits: window.events.filter(e => e.type === 'annotationsChanged').length }));
+  await command({ session: 'cached', type: 'annotations', annotations: savedAnnotations });
+  await page.waitForFunction(() => window.readerTest.getView().renderer.getContents().some(item => item.overlayer.element.querySelector('g[fill="#90caf9"]')));
+  assert.equal(await page.locator('.header-bar [data-action="bookmark"]').getAttribute('aria-pressed'), 'true');
+  await command({ session: 'stale', type: 'annotations', annotations: [] });
+  assert.equal(await page.evaluate(() => window.readerTest.getView().renderer.getContents().some(item => item.overlayer.element.querySelector('g[fill="#90caf9"]'))), true);
+  await command({ session: 'cached', type: 'annotations', annotations: [] });
+  assert.equal(await page.evaluate(() => window.readerTest.getView().renderer.getContents().some(item => item.overlayer.element.querySelector('g[fill="#90caf9"]'))), false);
+  assert.equal(await page.locator('.header-bar [data-action="bookmark"]').getAttribute('aria-pressed'), 'false');
+  assert.deepEqual(await page.evaluate(() => ({ cfi: window.readerTest.getView().lastLocation.cfi,
+    edits: window.events.filter(e => e.type === 'annotationsChanged').length })), beforeCloudAnnotations);
+  report.tests.push('Remote annotation updates refresh highlights/bookmarks without changing the reading position or echoing local edits; stale sessions cannot delete them');
   await command({ session: 'cached', type: 'close' });
   report.tests.push('Reopen applies native settings with a new session; custom fonts render in chrome and font items; page turns reuse canonical chapter documents and close releases the renderer');
   const startup = await browser.newPage({ viewport: { width: 1180, height: 780 } });

@@ -29,7 +29,7 @@ const result = await build({ entryPoints: ['entry/src/main/ets/services/CloudSyn
 const { CloudSyncService } = await import(`data:text/javascript;base64,${Buffer.from(result.outputFiles[0].text).toString('base64')}`);
 const hash = 'a'.repeat(32), otherHash = 'b'.repeat(32);
 function fixture() {
-  const f = globalThis.cloudFixture = { ids: 0, files: new Map(), objects: new Map(), books: new Map(), configs: new Map(),
+  const f = globalThis.cloudFixture = { ids: 0, files: new Map(), objects: new Map(), books: new Map(), configs: new Map(), notes: new Map(),
     operations: [], downloadHashes: [], clock: Date.now(), failUpload: false, failConfig: false };
   f.request = async (url, method, headers, body) => {
     assert.equal(headers.Authorization, 'Bearer test-token'); f.operations.push([method, url, body && JSON.parse(body)]);
@@ -40,10 +40,19 @@ function fixture() {
       const type = uri.searchParams.get('type'), key = uri.searchParams.get('book'), since = Number(uri.searchParams.get('since'));
       if (type === 'configs' && f.failConfig) throw Error('OFFLINE');
       const rows = [...f[type].values()].filter(row => (!key || row.book_hash === key) &&
-        core.cloudTime(type === 'books' ? row.synced_at : row.updated_at) > since);
+        Math.max(core.cloudTime(type === 'books' ? row.synced_at : row.updated_at), core.cloudTime(row.deleted_at)) > since);
       return { status: 200, body: JSON.stringify({ [type]: rows }) };
     }
     const data = JSON.parse(body), iso = new Date(++f.clock).toISOString();
+    if (data.notes) {
+      const note = data.notes[0], existing = f.notes.get(note.id);
+      const row = { user_id: 'account', book_hash: note.bookHash, id: note.id, type: note.type, cfi: note.cfi,
+        text: note.text, style: note.style, color: note.color, note: note.note, xpointer0: note.xpointer0,
+        created_at: new Date(note.createdAt).toISOString(), updated_at: new Date(note.updatedAt).toISOString(),
+        deleted_at: note.deletedAt ? new Date(note.deletedAt).toISOString() : null };
+      const accepted = existing && core.noteChange(existing) > core.noteChange(row) ? existing : row;
+      f.notes.set(note.id, accepted); return { status: 200, body: JSON.stringify({ notes: [accepted] }) };
+    }
     if (data.books) {
       const book = data.books[0], row = { user_id: 'account', book_hash: book.hash, title: book.title, author: book.author,
         source_title: book.sourceTitle, format: book.format, uploaded_at: book.uploadedAt ? new Date(book.uploadedAt).toISOString() : null,
@@ -214,4 +223,62 @@ test('choosing a cloud position mirrors it to KoSync; mirror failure keeps the r
     async save() {}, async restore() { return Object.assign(new core.ReadingPosition(), { cfi: remote.cfi, percentage: .4 }); } });
   await assert.rejects(coordinator.sync(book, 'reconcile'), /OFFLINE/);
   assert.equal(book.position.cfi, remote.cfi); assert.equal(book.dirty, true); assert.deepEqual(calls, [remote.cfi]);
+});
+
+function annotation(id, kind = 'highlight') {
+  return Object.assign(new core.BookAnnotation(), { id, kind, cfi:'epubcfi(/6/2!/4/2:0)', text:'Saved passage', createdAt:Date.now() });
+}
+test('Readest-only clients exchange bookmarks/highlights and retain deletions across restart', async () => {
+  const f=fixture(),a=client('/first'),b=client('/second'),book=localBook();a.books.push(book);
+  book.annotations=[annotation('highlight'),annotation('bookmark','bookmark')];
+  await a.service.sync(a.config);await b.service.sync(b.config);
+  assert.deepEqual(b.books[0].annotations.map(n=>n.id).sort(),['bookmark','highlight']);
+  assert.equal(f.notes.get('highlight').type,'annotation');assert.equal(f.notes.get('bookmark').type,'bookmark');
+  core.recordAnnotations(book,book.annotations.filter(n=>n.id!=='highlight'));
+  const request=f.request;f.request=async()=>{throw Error('OFFLINE')};await assert.rejects(a.service.sync(a.config));
+  assert.ok(book.annotationSync.find(n=>n.id==='highlight').dirty);
+  // Persisted book state, not a process-local delete queue, drives the next retry.
+  a.books[0]=JSON.parse(JSON.stringify(book));f.request=request;await a.service.sync(a.config);await b.service.sync(b.config);
+  assert.ok(f.notes.get('highlight').deleted_at);assert.deepEqual(b.books[0].annotations.map(n=>n.id),['bookmark']);
+  assert.equal(b.books[0].annotationSync.find(n=>n.id==='highlight').dirty,false);
+});
+test('font/annotation switches are independent and disabled notes keep their cursor and pending edits', async () => {
+  const f=fixture(),a=client('/first'),book=localBook();a.books.push(book);book.annotations=[annotation('mark','bookmark')];
+  a.config.syncAnnotations=false;await a.service.sync(a.config);assert.equal(f.notes.size,0);
+  assert.equal(f.operations.filter(o=>new URL(o[1]).searchParams.get('type')==='notes').length,0);
+  a.config.syncAnnotations=true;await a.service.sync(a.config);assert.equal(f.notes.size,1);
+});
+test('a newer local annotation edit survives an older upload acknowledgment and retries', async () => {
+  const f=fixture(),a=client('/first'),book=localBook();a.books.push(book);book.annotations=[annotation('mark')];
+  await a.service.sync(a.config);
+  core.recordAnnotations(book,[{...book.annotations[0],color:'#90caf9'}]);
+  const request=f.request;let changed=false;
+  f.request=async(...args)=>{
+    if(!changed && args[3]?.includes('"notes"')){changed=true;core.recordAnnotations(book,[{...book.annotations[0],color:'#f48fb1'}]);}
+    return request(...args);
+  };
+  await a.service.sync(a.config);assert.equal(book.annotations[0].color,'#f48fb1');assert.equal(book.annotationSync[0].dirty,true);
+  await a.service.sync(a.config);assert.equal(f.notes.get('mark').color,'#f48fb1');assert.equal(book.annotationSync[0].dirty,false);
+});
+test('remote tombstones without locators remove notes and a tied deletion wins', () => {
+  const book=new core.BookRecord();book.annotations=[annotation('mark')];core.prepareAnnotations(book,'account');
+  const at=book.annotationSync[0].updatedAt;
+  const row={user_id:'account',book_hash:hash,id:'mark',deleted_at:new Date(at).toISOString(),updated_at:new Date(at).toISOString()};
+  assert.equal(core.validCloudNote(row,'account'),true);core.applyCloudNote(book,row);assert.equal(book.annotations.length,0);
+  core.applyCloudNote(book,{...row,deleted_at:null,type:'annotation',cfi:'epubcfi(/6/2)',text:'Old'});
+  assert.equal(book.annotations.length,0);
+});
+test('annotation edits preserve Readest note text and XPointer fields; account changes drop old tombstones', () => {
+  const book=new core.BookRecord();book.hash=hash;core.prepareAnnotations(book,'account');
+  const row={user_id:'account',book_hash:hash,id:'mark',type:'annotation',cfi:'epubcfi(/6/2)',text:'Quote',color:'blue',style:'highlight',
+    note:'Keep this personal note',xpointer0:'/body/DocFragment[1]/body/p',created_at:new Date(100).toISOString(),updated_at:new Date(200).toISOString()};
+  core.applyCloudNote(book,row);core.recordAnnotations(book,[{...book.annotations[0],color:'#fff176'}],300);
+  const payload=core.notePayload(book,book.annotationSync[0]);assert.equal(payload.note,row.note);assert.equal(payload.xpointer0,row.xpointer0);
+  core.recordAnnotations(book,[],400);core.prepareAnnotations(book,'another-account');assert.equal(book.annotationSync.length,0);
+});
+test('a failed notes pull cannot advance any cloud cursor or lose pending annotations', async () => {
+  const f=fixture(),a=client('/first'),book=localBook();a.books.push(book);book.annotations=[annotation('mark')];
+  const request=f.request;f.request=async(...args)=>{if(new URL(args[0]).searchParams.get('type')==='notes')throw Error('OFFLINE');return request(...args)};
+  await assert.rejects(a.service.sync(a.config),/OFFLINE/);assert.equal(a.state.size,0);assert.equal(book.annotations.length,1);
+  f.request=request;await a.service.sync(a.config);assert.equal(f.notes.size,1);
 });

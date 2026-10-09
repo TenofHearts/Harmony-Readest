@@ -39,6 +39,7 @@ export class ReplicaService {
     try { const saved = await this.vault.loadText(); if (saved) this.config = JSON.parse(saved) as ReplicaSettings; }
     catch { this.error = 'CREDENTIALS_UNAVAILABLE'; }
     this.config.pendingDeletes = this.config.pendingDeletes || [];
+    this.config.syncAnnotations = this.config.syncAnnotations !== false;
     this.timer = setInterval(() => { this.sync().catch(() => {}); }, 60000);
   }
 
@@ -82,9 +83,10 @@ export class ReplicaService {
     this.storage = null; this.storageError = ''; this.pendingProgress = 0; this.changed();
   }
 
-  async options(enabled: boolean, syncFonts: boolean): Promise<void> {
+  async options(enabled: boolean, syncFonts: boolean, syncAnnotations: boolean = this.config.syncAnnotations): Promise<void> {
     await this.stop(); const previous = this.config;
     const updated = JSON.parse(JSON.stringify(previous)) as ReplicaSettings; updated.enabled = enabled; updated.syncFonts = syncFonts;
+    updated.syncAnnotations = syncAnnotations;
     await this.vault.saveText(JSON.stringify(updated)); this.config = updated; this.changed();
     if (enabled) await this.sync();
   }
@@ -185,9 +187,11 @@ export class ReplicaService {
     }
     } catch (error) { if (!failure) failure = error as Error; }
     this.active(epoch);
+    try { await this.afterSync(); this.active(epoch); } catch (error) { if (!failure) failure = error as Error; }
     if (failure) throw failure;
-    await this.afterSync(); this.active(epoch);
-    this.config.lastSyncedAt = Date.now(); await this.save(); this.status = 'synced'; this.changed();
+    if (this.pendingProgress > 0) this.status = 'pending';
+    else { this.config.lastSyncedAt = Date.now(); this.status = 'synced'; }
+    await this.save(); this.changed();
   }
 
   dispose(): void { this.epoch++; clearInterval(this.timer); this.changed = () => {}; }

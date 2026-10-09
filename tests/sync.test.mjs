@@ -161,7 +161,7 @@ test('pending choices block queued automatic uploads; choosing local resumes upl
   const checking = engine.sync(b, 'reconcile'), uploading = engine.sync(b);
   await Promise.all([checking, uploading]); assert.equal(pushes, 0); assert.equal(result.restores.length, 0);
   await engine.sync(b, 'keep-local'); assert.equal(pushes, 1); assert.equal(pulls, 1); assert.equal(b.dirty, false);
-  await engine.sync(b); assert.equal(pushes, 2); assert.equal(pulls, 1);
+  await engine.sync(b); assert.equal(pushes, 1); assert.equal(pulls, 1);
 });
 test('explicit Send progress uploads the current position without any remote GET', async () => {
   const b = book(); b.dirty = false; let pulls = 0, pushes = 0;

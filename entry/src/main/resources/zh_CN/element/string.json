@@ -189,12 +189,60 @@
       "value": "KOReader 同步"
     },
     {
-      "name": "kosync_description",
-      "value": "在各设备上使用相同的服务器、账号和 EPUB 文件同步阅读进度。书籍文件需分别导入。"
+      "name": "cloud_sync",
+      "value": "云同步"
     },
     {
-      "name": "kosync_connect_description",
-      "value": "连接到您的 KOReader 同步服务器。"
+      "name": "readest_cloud",
+      "value": "Readest 云端"
+    },
+    {
+      "name": "sync_on",
+      "value": "已启用"
+    },
+    {
+      "name": "sync_off",
+      "value": "已暂停"
+    },
+    {
+      "name": "always_latest",
+      "value": "始终采用最新位置"
+    },
+    {
+      "name": "send_only",
+      "value": "仅发送"
+    },
+    {
+      "name": "receive_only",
+      "value": "仅接收"
+    },
+    {
+      "name": "send_metadata",
+      "value": "发送书籍信息"
+    },
+    {
+      "name": "custom_headers",
+      "value": "自定义请求头（可选）"
+    },
+    {
+      "name": "create_account",
+      "value": "创建账号"
+    },
+    {
+      "name": "open_book_to_sync",
+      "value": "打开书籍后即可检查或同步其阅读位置。"
+    },
+    {
+      "name": "error_invalid_headers",
+      "value": "请检查请求头格式，每行填写一个 Header-Name: value；认证请求头由应用管理。"
+    },
+    {
+      "name": "error_account_exists",
+      "value": "该账号已存在，请使用密码连接。"
+    },
+    {
+      "name": "error_annotations_limit",
+      "value": "此书超出了 2000 条标注的支持上限。"
     },
     {
       "name": "reading_sync",
@@ -219,14 +267,6 @@
     {
       "name": "ask_on_conflict",
       "value": "冲突时询问"
-    },
-    {
-      "name": "checksum_method",
-      "value": "校验方式"
-    },
-    {
-      "name": "file_content",
-      "value": "文件内容"
     },
     {
       "name": "expand",
@@ -382,7 +422,7 @@
     },
     {
       "name": "about_version",
-      "value": "版本 0.0.9 · HarmonyOS"
+      "value": "版本 0.0.10 · HarmonyOS"
     },
     {
       "name": "about_license",
@@ -833,32 +873,12 @@
       "value": "Readest"
     },
     {
-      "name": "replica_fonts_description",
-      "value": "自定义字体文件"
-    },
-    {
-      "name": "replica_description",
-      "value": "通过 Readest 同步 EPUB 书籍、阅读进度和每本书的字体及排版设置。同时启用两种服务时，以 Readest 为恢复位置来源，并将选定位置同步至 KOReader。"
-    },
-    {
-      "name": "replica_connect_description",
-      "value": "登录 Readest，即可同步 EPUB 书架、阅读进度、书籍设置及自定义字体。"
-    },
-    {
       "name": "enable_replica_sync",
       "value": "启用同步"
     },
     {
       "name": "sync_replica_now",
       "value": "立即同步"
-    },
-    {
-      "name": "replica_data",
-      "value": "同步内容"
-    },
-    {
-      "name": "replica_data_value",
-      "value": "EPUB 书籍 · 进度 · 字体与排版"
     },
     {
       "name": "cloud_storage",
@@ -979,6 +999,10 @@
     {
       "name": "replica_status_synced",
       "value": "已同步"
+    },
+    {
+      "name": "replica_status_pending",
+      "value": "阅读进度需要确认"
     },
     {
       "name": "replica_status_error",

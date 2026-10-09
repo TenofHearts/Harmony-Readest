@@ -1,4 +1,6 @@
-import { KoSyncSettings, ProgressSyncProvider, ReadingPosition, RemoteProgress, SyncTransport, SyncResponse } from './Models';
+import { KoSyncSettings, ProgressSyncProvider, ReadingPosition, RemoteProgress, SyncTransport, SyncResponse, DocumentMetadata } from './Models';
+import { parseCustomHeaders, formatCustomHeaders } from './SyncOptions';
+import { errorMessage } from './Errors';
 
 export function normalizeServer(value: string): string {
   const url = value.trim().replace(/\/+$/, '');
@@ -11,18 +13,27 @@ export class KoSyncClient implements ProgressSyncProvider {
   private base: string;
   private config: KoSyncSettings;
   private transport: SyncTransport;
-  constructor(config: KoSyncSettings, transport: SyncTransport) {
+  private metadata?: (hash: string) => DocumentMetadata | undefined;
+  result: (error: string) => void = () => {};
+  constructor(config: KoSyncSettings, transport: SyncTransport, metadata?: (hash: string) => DocumentMetadata | undefined) {
     this.config = config; this.transport = transport;
+    this.metadata = metadata;
     this.base = normalizeServer(config.serverUrl);
   }
 
-  private async request(endpoint: string, method: string = 'GET', body?: string): Promise<SyncResponse> {
-    let headers: Record<string, string> = { 'Accept': 'application/vnd.koreader.v1+json',
-      'Content-Type': 'application/json', 'X-Auth-User': this.config.username, 'X-Auth-Key': this.config.userkey };
-    if (this.basic) headers = { 'Accept': 'application/vnd.koreader.v1+json', 'Content-Type': 'application/json',
-      'Authorization': `Basic ${this.config.basicKey}` };
-    let response = await this.transport.request(`${this.base}${endpoint}`, method, headers, body);
-    if (!this.basic && (response.status === 400 || response.status === 401) && this.config.basicKey) {
+  private failure(message: string): Error { this.result(message); return new Error(message); }
+
+  private async request(endpoint: string, method: string = 'GET', body?: string, authenticated: boolean = true): Promise<SyncResponse> {
+    const headers = parseCustomHeaders(formatCustomHeaders(this.config.customHeaders));
+    headers['Accept'] = 'application/vnd.koreader.v1+json'; headers['Content-Type'] = 'application/json';
+    if (authenticated) {
+      if (this.basic) headers['Authorization'] = `Basic ${this.config.basicKey}`;
+      else { headers['X-Auth-User'] = this.config.username; headers['X-Auth-Key'] = this.config.userkey; }
+    }
+    let response: SyncResponse;
+    try { response = await this.transport.request(`${this.base}${endpoint}`, method, headers, body); }
+    catch (error) { this.result(errorMessage(error as Error)); throw error as Error; }
+    if (authenticated && !this.basic && (response.status === 400 || response.status === 401) && this.config.basicKey) {
       this.basic = true;
       response = await this.request(endpoint, method, body);
       if (response.status >= 400) this.basic = false;
@@ -30,58 +41,67 @@ export class KoSyncClient implements ProgressSyncProvider {
     return response;
   }
 
+  async register(): Promise<void> {
+    const response = await this.request('/users/create', 'POST', JSON.stringify({ username: this.config.username, password: this.config.userkey }), false);
+    if (response.status === 402 || response.status === 409) throw this.failure('ACCOUNT_EXISTS');
+    this.check(response); await this.authenticate();
+  }
+
   async authenticate(): Promise<void> {
     const response = await this.request('/users/auth');
     this.check(response);
     const json = JSON.parse(response.body) as Record<string, string>;
-    if (!json || typeof json !== 'object' || Array.isArray(json) || json.authorized !== 'OK') throw new Error('NOT_KOSYNC');
+    if (!json || typeof json !== 'object' || Array.isArray(json) || json.authorized !== 'OK') throw this.failure('NOT_KOSYNC');
+    this.result('');
   }
 
   private check(response: SyncResponse): void {
-    if (response.status === 401 || response.status === 403) throw new Error('AUTH_FAILED');
-    if (response.status < 200 || response.status >= 300) throw new Error(`SERVER_ERROR:${response.status}`);
-    try { JSON.parse(response.body); } catch { throw new Error('NOT_KOSYNC'); }
+    if (response.status === 401 || response.status === 403) { this.result('AUTH_FAILED'); throw new Error('AUTH_FAILED'); }
+    if (response.status < 200 || response.status >= 300) { this.result('SERVER_ERROR'); throw new Error(`SERVER_ERROR:${response.status}`); }
+    try { JSON.parse(response.body); } catch { this.result('NOT_KOSYNC'); throw new Error('NOT_KOSYNC'); }
   }
 
   async pull(hash: string): Promise<RemoteProgress | null> {
-    if (!/^[0-9a-f]{32}$/.test(hash)) throw new Error('INVALID_DOCUMENT_HASH');
+    if (!/^[0-9a-f]{32}$/.test(hash)) throw this.failure('INVALID_DOCUMENT_HASH');
     const response = await this.request(`/syncs/progress/${hash}`);
-    if (response.status === 404) return null;
+    if (response.status === 404) { this.result(''); return null; }
     this.check(response);
     const remote = JSON.parse(response.body) as RemoteProgress;
-    if (!remote || typeof remote !== 'object' || Array.isArray(remote)) throw new Error('INVALID_PROGRESS');
+    if (!remote || typeof remote !== 'object' || Array.isArray(remote)) throw this.failure('INVALID_PROGRESS');
     // Stock KoSync and CrossPoint use an empty successful response for a new book.
-    if (Object.keys(remote).length === 0) return null;
-    if (remote.document && remote.document !== hash) throw new Error('DOCUMENT_MISMATCH');
+    if (Object.keys(remote).length === 0) { this.result(''); return null; }
+    if (remote.document && remote.document !== hash) throw this.failure('DOCUMENT_MISMATCH');
     const hasPointer = typeof remote.progress === 'string' && remote.progress.length > 0;
     const hasFraction = typeof remote.percentage === 'number' && Number.isFinite(remote.percentage) &&
       remote.percentage >= 0 && remote.percentage <= 1;
-    if (remote.percentage !== undefined && !hasFraction) throw new Error('INVALID_PROGRESS');
-    if (!hasPointer && !hasFraction) throw new Error('INVALID_PROGRESS');
+    if (remote.percentage !== undefined && !hasFraction) throw this.failure('INVALID_PROGRESS');
+    if (!hasPointer && !hasFraction) throw this.failure('INVALID_PROGRESS');
     if (remote.timestamp !== undefined && (typeof remote.timestamp !== 'number' || !Number.isFinite(remote.timestamp))) {
-      throw new Error('INVALID_TIMESTAMP');
+      throw this.failure('INVALID_TIMESTAMP');
     }
-    return remote;
+    this.result(''); return remote;
   }
 
   async push(hash: string, position: ReadingPosition): Promise<RemoteProgress | null> {
     if (!/^[0-9a-f]{32}$/.test(hash) || !position.xpointer.startsWith('/body/DocFragment') ||
       !Number.isFinite(position.percentage) || position.percentage < 0 || position.percentage > 1) {
-      throw new Error('UNRESOLVED_POSITION');
+      throw this.failure('UNRESOLVED_POSITION');
     }
     const payload: RemoteProgress = { document: hash, progress: position.xpointer, percentage: position.percentage,
       device: this.config.deviceName, device_id: this.config.deviceId };
+    if (this.config.sendMetadata && this.metadata) payload.metadata = this.metadata(hash);
     const response = await this.request('/syncs/progress', 'PUT', JSON.stringify(payload));
     this.check(response);
     const ack = JSON.parse(response.body) as RemoteProgress;
-    if (!ack || typeof ack !== 'object' || Array.isArray(ack)) throw new Error('INVALID_PROGRESS');
-    if (ack.document && ack.document !== hash) throw new Error('DOCUMENT_MISMATCH');
+    if (!ack || typeof ack !== 'object' || Array.isArray(ack)) throw this.failure('INVALID_PROGRESS');
+    if (ack.document && ack.document !== hash) throw this.failure('DOCUMENT_MISMATCH');
     if (ack.timestamp !== undefined) {
-      if (typeof ack.timestamp !== 'number' || !Number.isFinite(ack.timestamp) || ack.timestamp <= 0) throw new Error('INVALID_TIMESTAMP');
+      if (typeof ack.timestamp !== 'number' || !Number.isFinite(ack.timestamp) || ack.timestamp <= 0) throw this.failure('INVALID_TIMESTAMP');
       payload.timestamp = ack.timestamp;
+      this.result('');
       return payload;
     }
     // Some stock-compatible servers acknowledge only with { updated: 'OK' }.
-    return payload;
+    this.result(''); return payload;
   }
 }

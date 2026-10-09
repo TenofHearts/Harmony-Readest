@@ -4,11 +4,11 @@ import { hilog } from '@kit.PerformanceAnalysisKit';
 import { webview } from '@kit.ArkWeb';
 import { connection } from '@kit.NetworkKit';
 import { i18n } from '@kit.LocalizationKit';
-import { BookRecord, KoSyncSettings, ReaderCommand, ReaderEvent, ReaderSettings, ThemeSettings, RemoteProgress, ReadingPosition } from '../core/Models';
+import { BookRecord, KoSyncSettings, ReaderCommand, ReaderEvent, ReaderSettings, ThemeSettings, RemoteProgress, ReadingPosition, DocumentMetadata } from '../core/Models';
 import { isThemeMode, isThemeColor } from '../core/Themes';
 import { KoSyncClient, normalizeServer } from '../core/KoSyncClient';
 import { ProgressCoordinator, SyncHooks } from '../core/ProgressCoordinator';
-import { isCurrentSession } from '../core/SyncPolicy';
+import { isCurrentSession, decideSync, remoteToken, uploadedToken, canAcknowledge } from '../core/SyncPolicy';
 import { errorMessage } from '../core/Errors';
 import { Repository } from './Repository';
 import { CredentialVault } from './CredentialVault';
@@ -25,6 +25,8 @@ import { removeLocalFile } from './LocalFiles';
 import { readerAppearance } from '../core/AppearancePolicy';
 import { validAnnotations } from '../core/AnnotationPolicy';
 import { shareBook } from './BookSharing';
+import { recordAnnotations } from '../core/CloudAnnotations';
+import { KOSYNC_STRATEGIES, parseCustomHeaders, formatCustomHeaders } from '../core/SyncOptions';
 
 export class AppController {
   static current?: AppController;
@@ -39,6 +41,9 @@ export class AppController {
   fonts: FontLibrary = new FontLibrary();
   replica: ReplicaService = new ReplicaService(this.fonts);
   status: string = 'idle';
+  koStatus: string = 'idle';
+  koError: string = '';
+  koBusy: boolean = false;
   error: string = '';
   busy: boolean = false;
   conflict?: RemoteProgress;
@@ -55,6 +60,10 @@ export class AppController {
   private vault: CredentialVault = new CredentialVault();
   private coordinator?: ProgressCoordinator;
   private debounce: number = -1;
+  private cloudDebounce: number = -1;
+  private koTimer: number = -1;
+  private closedKoBusy: boolean = false;
+  private credentialWrites: Promise<void> = Promise.resolve();
   private opened: boolean = false;
   private blocked: boolean = false;
   private restoreFailed: boolean = false;
@@ -76,13 +85,21 @@ export class AppController {
   constructor(context: common.UIAbilityContext) {
     this.context = context; AppController.current = this;
     const hooks: CloudHooks = { books: () => this.books, changed: () => this.changed(), reading: () => this.activeBook, defaults: () => this.appearance,
-      fallback: async (hash: string) => this.config.enabled && this.config.userkey ? new KoSyncClient(this.config, new NativeTransport()).pull(hash) : null,
+      fallback: async (hash: string) => this.config.enabled && this.config.userkey && this.config.strategy !== 'send' ? this.koClient().pull(hash) : null,
       sendPosition: (book: BookRecord, position: ReadingPosition) => new CombinedProgress(this.cloud,
-        this.config.enabled && this.config.userkey ? new KoSyncClient(this.config, new NativeTransport()) : undefined).push(book.hash, position),
+        this.config.enabled && this.config.userkey ? this.koClient() : undefined, this.config.strategy).push(book.hash, position),
+      annotations: async (book: BookRecord) => {
+        if (book.id === this.activeBook?.id && this.opened && this.reader) {
+          const command = this.command('annotations'); command.annotations = book.annotations; await this.reader.send(command);
+        }
+      },
       style: async (book: BookRecord) => { if (book.id === this.activeBook?.id && !this.importing && book.style) await this.applyAppearance(readerAppearance(this.appearance, book.style)); } };
     this.cloud = new CloudSyncService(this.store, this.replica, hooks);
     this.replica.cloudSync = (config) => this.cloud.sync(config);
-    this.replica.afterSync = () => this.sync();
+    this.replica.afterSync = async () => {
+      await this.retryProgress();
+      if (this.activeBook && (this.conflict || this.restoreFailed || this.activeBook.dirty)) this.replica.pendingProgress++;
+    };
     this.systemDark = context.config?.colorMode === ConfigurationConstant.ColorMode.COLOR_MODE_DARK;
   }
 
@@ -108,6 +125,7 @@ export class AppController {
     this.changed();
     this.replica.sync().catch(() => {});
     this.replica.refreshStorage().catch(() => {});
+    this.koTimer = setInterval(() => { if (!this.cloudEnabled()) this.retryProgress().catch(() => {}); }, 60000);
   }
 
   attach(controller: webview.WebviewController): ReaderGateway {
@@ -125,42 +143,75 @@ export class AppController {
   progressEnabled(): boolean { return this.cloudEnabled() || (this.config.enabled && !!this.config.userkey); }
   private scope(): string { return `${this.cloudEnabled() ? this.replica.config.userId : ''}|${this.config.enabled ? `${this.config.serverUrl}|${this.config.username}` : ''}`; }
 
-  async saveConfig(config: KoSyncSettings): Promise<void> {
+  private koClient(): KoSyncClient {
+    const config = this.config;
+    const client = new KoSyncClient(config, new NativeTransport(), (hash: string): DocumentMetadata | undefined => {
+      const book = this.books.find((value: BookRecord) => value.hash === hash);
+      return book ? { filename: book.filename, title: book.title, authors: book.author } : undefined;
+    });
+    client.result = (error: string) => {
+      if (config !== this.config) return;
+      this.koError = error; this.koStatus = error ? 'error' : 'synced';
+      if (!error) {
+        config.lastSyncedAt = Date.now();
+        const saved = JSON.stringify(config);
+        this.credentialWrites = this.credentialWrites.catch(() => {}).then(async () => {
+          if (config === this.config) await this.vault.saveText(saved);
+        }).catch((failure: Error) => { this.koError = errorMessage(failure); this.koStatus = 'error'; });
+      }
+      this.changed();
+    };
+    return client;
+  }
+
+  async saveConfig(config: KoSyncSettings, register: boolean = false): Promise<void> {
     config.serverUrl = normalizeServer(config.serverUrl);
     if (!config.username.trim() || !config.password) throw new Error('CREDENTIALS_REQUIRED');
     config.username = config.username.trim(); config.deviceId = await this.store.deviceId();
+    config.strategy = KOSYNC_STRATEGIES.includes(config.strategy) ? config.strategy : 'prompt';
+    config.customHeaders = parseCustomHeaders(formatCustomHeaders(config.customHeaders));
     await this.vault.prepare(config);
-    const client = new KoSyncClient(config, new NativeTransport()); await client.authenticate();
+    const client = new KoSyncClient(config, new NativeTransport());
+    if (register) await client.register(); else await client.authenticate();
     const previous = this.scope();
-    await this.vault.save(config);
+    await this.credentialWrites; await this.vault.save(config);
     this.epoch++; this.config = config; this.coordinator = undefined; this.conflict = undefined; this.blocked = false;
     if (previous !== this.scope()) {
       for (const book of this.books) {
-        book.syncScope = this.scope(); book.dirty = false; book.remoteToken = ''; await this.store.save(book);
+        book.syncScope = this.scope(); book.remoteToken = ''; await this.store.save(book);
       }
     }
     this.status = 'connected'; this.error = ''; this.changed();
+    this.koStatus = 'connected'; this.koError = '';
     if (this.opened && config.enabled) await this.sync('reconcile');
   }
 
   async disconnect(): Promise<void> {
     this.epoch++; clearTimeout(this.debounce); this.coordinator = undefined;
-    await this.vault.clear();
+    await this.credentialWrites; await this.vault.clear();
     this.config = new KoSyncSettings(); this.config.deviceId = await this.store.deviceId();
     this.status = 'idle'; this.conflict = undefined; this.changed();
+    this.koStatus = 'idle'; this.koError = ''; this.blocked = false; this.restoreFailed = false;
+    if (this.opened && this.cloudEnabled()) await this.sync('reconcile');
   }
 
-  async updateSyncOptions(enabled: boolean, deviceName: string): Promise<void> {
+  async updateSyncOptions(enabled: boolean, deviceName: string, strategy: string = this.config.strategy,
+    sendMetadata: boolean = this.config.sendMetadata, headers: string = formatCustomHeaders(this.config.customHeaders)): Promise<void> {
     if (!this.config.userkey) return;
     // Account options change locally; saved credentials do not need a new login.
     const config = new KoSyncSettings();
     config.serverUrl = this.config.serverUrl; config.username = this.config.username;
     config.password = this.config.password; config.userkey = this.config.userkey; config.basicKey = this.config.basicKey;
     config.deviceId = this.config.deviceId; config.deviceName = deviceName.trim() || 'Readest'; config.enabled = enabled;
-    await this.vault.save(config);
+    if (!KOSYNC_STRATEGIES.includes(strategy)) throw new Error('INVALID_SYNC_STRATEGY');
+    config.strategy = strategy; config.sendMetadata = sendMetadata; config.customHeaders = parseCustomHeaders(headers);
+    config.lastSyncedAt = this.config.lastSyncedAt;
+    await this.credentialWrites; await this.vault.save(config);
     this.epoch++; this.config = config; this.coordinator = undefined;
     if (!enabled) clearTimeout(this.debounce);
+    this.blocked = false; this.restoreFailed = false; this.conflict = undefined; this.koError = '';
     this.changed();
+    if (this.opened && this.progressEnabled()) await this.sync('reconcile');
   }
 
   async importBooks(): Promise<void> {
@@ -282,11 +333,58 @@ export class AppController {
   }
 
   async syncNow(): Promise<void> {
-    // Reconcile first so a manual sync still presents conflicting positions.
+    // Check before any automatic callback can publish the active book's position.
     let failure: Error | undefined;
+    try { await this.sync('reconcile'); } catch (error) { failure = error as Error; }
+    try { await this.retryClosedKo(); } catch (error) { failure = error as Error; }
     try { await this.replica.sync(); } catch (error) { failure = error as Error; }
-    await this.sync('reconcile');
     if (failure) throw failure;
+  }
+
+  private async retryProgress(): Promise<void> {
+    try {
+      if (!this.conflict && !this.restoreFailed) {
+        const needsCheck = !this.coordinator || this.coordinator.needsReconciliation();
+        await this.sync(needsCheck ? 'reconcile' : 'upload');
+      }
+    } finally { await this.retryClosedKo(); }
+  }
+
+  private async retryClosedKo(): Promise<void> {
+    // Offline edits must retry after a book closes or the app restarts. Differing
+    // reports still need an open renderer for a preview/restore and user choice.
+    if (this.cloudEnabled() || !this.config.enabled || !this.config.userkey || this.config.strategy === 'receive' || this.closedKoBusy) return;
+    const config = this.config, scope = this.scope(), epoch = this.epoch;
+    const client = this.koClient();
+    let pending = false;
+    this.closedKoBusy = true;
+    try {
+      for (const book of this.books) {
+        const active = (): boolean => epoch === this.epoch && config === this.config && scope === this.scope() && !this.cloudEnabled() &&
+          this.books.includes(book) && this.activeBook?.id !== book.id;
+        if (!active() || !book.dirty || !book.hash || !book.position.cfi || !book.position.xpointer) continue;
+        if (book.syncScope !== scope) {
+          book.syncScope = scope; book.remoteToken = ''; await this.store.save(book);
+        }
+        if (!active()) continue;
+        const remote = config.strategy === 'send' ? null : await client.pull(book.hash);
+        if (!active()) continue;
+        let decision = decideSync(book, remote);
+        if (config.strategy === 'silent' && decision === 'conflict' && remote?.timestamp && book.position.updatedAt &&
+          remote.timestamp * 1000 < book.position.updatedAt) decision = 'push';
+        if (decision !== 'push') { pending = true; continue; }
+        const snapshot = JSON.parse(JSON.stringify(book.position)) as ReadingPosition;
+        const ack = await client.push(book.hash, snapshot);
+        if (!active()) continue;
+        book.remoteToken = ack?.timestamp ? remoteToken(ack) : uploadedToken(snapshot.xpointer, snapshot.percentage, ack?.device_id || '');
+        if (canAcknowledge(snapshot.revision, book.position.revision)) book.dirty = false;
+        await this.store.save(book); pending = pending || book.dirty;
+      }
+      if (config === this.config) {
+        if (this.conflict || this.restoreFailed) this.koStatus = this.status;
+        else if (pending) this.koStatus = 'pending';
+      }
+    } finally { this.closedKoBusy = false; this.changed(); }
   }
 
   async setAppearance(settings: ReaderSettings, persistBook: boolean = true): Promise<void> {
@@ -295,7 +393,7 @@ export class AppController {
     if (persistBook && this.activeBook && !this.importing) {
       this.activeBook.style = JSON.parse(JSON.stringify(settings)) as ReaderSettings; this.activeBook.styleUpdatedAt = Date.now(); this.activeBook.styleDirty = true;
       await this.store.save(this.activeBook);
-      clearTimeout(this.debounce); this.debounce = setTimeout(() => { this.replica.sync().catch(() => {}); }, 5000);
+      clearTimeout(this.cloudDebounce); this.cloudDebounce = setTimeout(() => { this.replica.sync().catch(() => {}); }, 5000);
     }
     await this.applyAppearance(settings);
   }
@@ -427,8 +525,16 @@ export class AppController {
     else if (event.type === 'toggleControls') this.controls = !this.controls;
     else if (event.type === 'annotationsChanged' && event.annotations && !this.importing && this.opened) {
       if (!validAnnotations(event.annotations)) return;
-      book.annotations = event.annotations;
+      if (event.annotationChanges && event.removedAnnotations) {
+        if (!validAnnotations(event.annotationChanges) || event.removedAnnotations.length > 2000 ||
+          !event.removedAnnotations.every((id: string) => typeof id === 'string' && !!id && id.length <= 128)) return;
+        const annotations = book.annotations.filter((item) => !event.removedAnnotations!.includes(item.id) &&
+          !event.annotationChanges!.some((changed) => changed.id === item.id)).concat(event.annotationChanges);
+        if (!validAnnotations(annotations)) return;
+        recordAnnotations(book, annotations);
+      } else recordAnnotations(book, event.annotations);
       await this.store.save(book);
+      clearTimeout(this.cloudDebounce); this.cloudDebounce = setTimeout(() => { this.replica.sync().catch(() => {}); }, 5000);
     }
     else if (event.type === 'readerAction' && event.action && ['library', 'settings', 'sync', 'share'].includes(event.action)) {
       this.readerAction(event.action);
@@ -444,18 +550,20 @@ export class AppController {
 
   async sync(mode: string = 'upload'): Promise<void> {
     const book = this.activeBook;
-    if (!book || !this.opened || !this.progressEnabled() || (this.blocked && mode === 'upload')) return;
+    if (!book || !this.opened || !this.progressEnabled() || ((this.conflict || this.restoreFailed) && mode === 'upload')) return;
     if (this.coordinatorScope !== this.scope()) {
       this.coordinator = undefined; this.coordinatorScope = this.scope(); book.syncScope = this.scope(); book.remoteToken = '';
       if (mode === 'upload') mode = 'reconcile';
     }
     if (mode !== 'upload') { this.blocked = false; this.restoreFailed = false; this.conflict = undefined; this.conflictPreview = undefined; }
     if (!this.coordinator) {
+      if (mode === 'upload') mode = 'reconcile';
       const session = this.reader!.session, epoch = this.epoch, scope = this.scope();
       const hooks: SyncHooks = {
         save: (value: BookRecord): Promise<void> => this.store.save(value),
         inspect: (remote: RemoteProgress): Promise<ReadingPosition> => this.reader!.inspect(remote),
         deviceId: this.config.deviceId,
+        strategy: this.cloudEnabled() ? 'prompt' : this.config.strategy,
         restore: (remote: RemoteProgress): Promise<ReadingPosition> => this.reader!.restore(remote).catch((error: Error) => {
           if (epoch === this.epoch) this.restoreFailed = true; throw error;
         }),
@@ -465,30 +573,33 @@ export class AppController {
           this.conflict = remote; this.conflictPreview = preview; this.blocked = true; this.changed();
         }
       };
-      const ko = this.config.enabled && this.config.userkey ? new KoSyncClient(this.config, new NativeTransport()) : undefined;
-      this.coordinator = new ProgressCoordinator(this.cloudEnabled() ? new CombinedProgress(this.cloud, ko) : ko!, hooks);
+      const ko = this.config.enabled && this.config.userkey ? this.koClient() : undefined;
+      this.coordinator = new ProgressCoordinator(this.cloudEnabled() ? new CombinedProgress(this.cloud, ko, this.config.strategy) : ko!, hooks);
     }
     const epoch = this.epoch;
+    this.koBusy = this.config.enabled && !!this.config.userkey;
     try { await this.coordinator.sync(book, mode); if (epoch === this.epoch) this.error = ''; }
     catch (error) { if (epoch === this.epoch) { this.blocked = true; this.fail(error as Error); } throw error as Error; }
-    finally { this.changed(); }
+    finally { this.koBusy = false; if (!this.cloudEnabled()) this.koStatus = this.status; this.changed(); }
   }
 
   onBackground(): void {
     clearTimeout(this.debounce);
+    clearTimeout(this.cloudDebounce);
     if (this.activeBook) this.store.save(this.activeBook).catch(() => {});
     if (!this.blocked) this.sync().catch(() => {});
   }
 
-  onForeground(): void { this.replica.sync().catch(() => {}); this.replica.refreshStorage().catch(() => {}); if (this.opened) { this.blocked = false; this.sync('reconcile').catch(() => {}); } }
+  onForeground(): void { this.syncNow().catch(() => {}); this.replica.refreshStorage().catch(() => {}); }
 
   private onNetworkAvailable(): void {
     this.replica.sync().catch(() => {});
-    if (this.opened && !this.conflict && !this.restoreFailed) { this.blocked = false; this.sync().catch(() => {}); }
+    this.retryProgress().catch(() => {});
   }
 
   dispose(): void {
     this.replica.dispose();
+    clearInterval(this.koTimer); clearTimeout(this.cloudDebounce);
     clearTimeout(this.openTimer);
     this.onBackground(); this.epoch++; try { this.network?.unregister(() => {}); } catch {} this.reader?.cancel();
     this.changed = () => {}; if (AppController.current === this) AppController.current = undefined;

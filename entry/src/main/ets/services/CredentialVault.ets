@@ -51,7 +51,10 @@ export class CredentialVault {
 
   async load(): Promise<KoSyncSettings> {
     const value = await this.loadText();
-    return value ? JSON.parse(value) as KoSyncSettings : new KoSyncSettings();
+    if (!value) return new KoSyncSettings();
+    const saved = JSON.parse(value) as KoSyncSettings;
+    saved.strategy = saved.strategy || 'prompt'; saved.customHeaders = saved.customHeaders || {};
+    saved.sendMetadata = saved.sendMetadata || false; saved.lastSyncedAt = saved.lastSyncedAt || 0; return saved;
   }
 
   async loadText(): Promise<string> {
