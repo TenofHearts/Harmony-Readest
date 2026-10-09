@@ -41,6 +41,14 @@
       "value": "Your library is empty"
     },
     {
+      "name": "app_language",
+      "value": "App language"
+    },
+    {
+      "name": "language_system",
+      "value": "System"
+    },
+    {
       "name": "empty_description",
       "value": "Add books from your device to start reading. No internet connection required."
     },
@@ -238,7 +246,7 @@
     },
     {
       "name": "about_version",
-      "value": "Version 0.0.5 · HarmonyOS"
+      "value": "Version 0.0.6 · HarmonyOS"
     },
     {
       "name": "about_license",

@@ -17,7 +17,9 @@ const bundled = await build({ stdin: { contents: `export { FontLibrary } from '.
       import { createHash, randomUUID } from 'node:crypto';
       const f = () => globalThis.fontFixture;
       export const util = { TextEncoder: class { encodeInto(value) { return new TextEncoder().encode(value); } }, generateRandomUUID: randomUUID };
-      export const font = { getSystemFontList() { return ['Fixture Sans']; }, registerFont(value) { f().registered.push(value); } };
+      export const font = { getSystemFontList() { return f().systemFontList || ['Fixture Sans', 'Unavailable Face']; },
+        getFontByName(name) { return { path: f().systemPaths?.[name] || (name === 'Fixture Sans' ? '/system/fonts/fixture.ttf' : '/system/fonts/missing.ttf'), weight: 500, italic: false }; },
+        registerFont(value) { f().registered.push(value); } };
       export const cryptoFramework = { createMd() { const hash = createHash('md5'); return {
         async update(value) { hash.update(value.data); }, async digest() { return { data: new Uint8Array(hash.digest()) }; }
       }; } };
@@ -71,6 +73,7 @@ function fontBytes(family = 'Fixture Serif') {
 function fixture() {
   const f = globalThis.fontFixture = { files: new Map(), folders: new Set(), handles: new Map(), nextFd: 0,
     prefs: new Map(), registered: [], selected: [], cloudFiles: new Map(), rows: new Map(), calls: [], binaryCalls: [], failBinary: false };
+  f.files.set('/system/fonts/fixture.ttf', Buffer.from(fontBytes('Fixture Sans')));
   f.request = async (url, method, headers, body) => {
     f.calls.push({ url, method, headers, body }); const parsed = body ? JSON.parse(body) : null;
     if (url.includes('/auth/v1/token')) return { status: 200, body: JSON.stringify({ access_token: 'fixture-token', refresh_token: 'fixture-refresh', expires_in: 3600, user: { id: 'fixture-user', email: 'reader@example.test' } }) };
@@ -118,6 +121,40 @@ test('native font import matches Readest content identity, persists across resta
   assert.equal((await library.install(bytes, 'reading.ttf')).id, installed.id); assert.equal(library.fonts.length, 1);
   const reopened = new FontLibrary(); await reopened.init({ filesDir: '/first' }); assert.equal(reopened.fonts[0].family, 'Fixture Serif');
   await assert.rejects(library.install(bytes, 'tampered.ttf', installed.id), /INVALID_FONT/); assert.equal(reopened.fonts.length, 1);
+});
+
+test('system font choices include native file resources for ArkWeb, without importing or replicating system fonts', async () => {
+  fixture(); const { library } = await client('/first');
+  assert.deepEqual(library.systemFonts, ['Fixture Sans']);
+  const files = library.readerFontFiles(), faces = library.readerFonts('https://reader.test');
+  assert.equal(files[0].path, '/system/fonts/fixture.ttf');
+  assert.deepEqual({ ...faces[0] }, { family: 'Fixture Sans', style: 'normal', weight: '500', url: 'https://reader.test/fonts/system-0' });
+  assert.equal(library.fonts.length, 0);
+  const custom = await library.install(fontBytes('Fixture Sans'), 'replacement.ttf');
+  assert.deepEqual(library.readerFontFiles().map(face => face.id), [custom.id], 'Imported face wins a family-name collision');
+});
+
+test('generic font categories resolve to the same explicit system files in native UI and ArkWeb', async () => {
+  const f = fixture();
+  f.systemFontList = ['Chinese Serif', 'Chinese Sans', 'Code Mono'];
+  f.systemPaths = { 'Chinese Serif': '/system/fonts/NotoSerifCJK-Regular.ttc', 'Chinese Sans': '/system/fonts/HarmonyOS_Sans_SC.ttf', 'Code Mono': '/system/fonts/NotoSansMono.ttf' };
+  for (const path of Object.values(f.systemPaths)) f.files.set(path, Buffer.from(fontBytes()));
+  const { library } = await client('/first');
+  assert.equal(library.nativeFamily('serif'), 'Readest Serif'); assert.equal(library.nativeFamily('sans-serif'), 'Readest Sans');
+  const faces = library.readerFontFiles();
+  assert.equal(faces.find(face => face.family === 'Readest Serif').path, f.systemPaths['Chinese Serif']);
+  assert.equal(faces.find(face => face.family === 'Readest Sans').path, f.systemPaths['Chinese Sans']);
+  assert.equal(library.fonts.length, 0);
+});
+
+test('generic fonts remain available when HarmonyOS enumerates theme fonts only', async () => {
+  const f = fixture();
+  f.files.set('/system/fonts/NotoSerifCJK-Regular.ttc', Buffer.from(fontBytes()));
+  f.files.set('/system/fonts/HarmonyOS_Sans_SC.ttf', Buffer.from(fontBytes()));
+  const { library } = await client('/first');
+  assert.equal(library.nativeFamily('serif'), 'Readest Serif'); assert.equal(library.nativeFamily('sans-serif'), 'Readest Sans');
+  assert.deepEqual(library.systemFonts, ['Fixture Sans']);
+  assert.ok(library.readerFonts('https://reader.test').some(face => face.family === 'Readest Serif'));
 });
 
 test('two clients exchange font replicas and binaries, publishing manifests last and persisting cursors', async () => {

@@ -11,21 +11,30 @@ export type ReaderFont = { family: string; style: string; weight: string; url: s
 const quote = (name: string) => JSON.stringify(name).replace(/</g, '\\3c ');
 export const cssFamily = (name: string, fallback = 'serif') =>
   ['serif', 'sans-serif', 'monospace', 'system-ui'].includes(name) ? name : `${quote(name)}, ${fallback}`;
+export const builtinFontFamilies: Record<string, string> = { serif: 'Readest Serif', 'sans-serif': 'Readest Sans', monospace: 'Readest Mono' };
+export function resolvedFontFamily(name: string, faces: ReaderFont[], fallback = 'serif') {
+  const alias = builtinFontFamilies[name];
+  return cssFamily(alias && faces.some(face => face.family === alias) ? alias : name, fallback);
+}
+
+export function fontFaceStyles(faces: ReaderFont[], sources: Map<string, string>, previews = false) {
+  return faces.filter(face => previews || sources.has(face.url)).map(face =>
+    `@font-face{font-family:${quote(face.family)};src:url(${quote(sources.get(face.url) || face.url)});font-style:${face.style};font-weight:${face.weight};font-display:swap}`).join('\n');
+}
 
 export function typographyStyles(s: Appearance, faces: ReaderFont[], sources: Map<string, string>) {
   const cjkFace = faces.find(face => face.family === s.defaultCJKFont);
   const cjkSource = cjkFace ? `url(${quote(sources.get(cjkFace.url) || '')})` : `local(${quote(s.defaultCJKFont)})`;
   const cjk = s.defaultCJKFont ? `'Readest CJK', ` : '';
-  const family = s.defaultFont === 'sans-serif' ? cssFamily(s.sansSerifFont, 'sans-serif') : cssFamily(s.serifFont);
-  return `${faces.filter(face => sources.has(face.url)).map(face =>
-    `@font-face{font-family:${quote(face.family)};src:url(${quote(sources.get(face.url)!)});font-style:${face.style};font-weight:${face.weight};font-display:swap}`).join('\n')}
+  const family = s.defaultFont === 'sans-serif' ? resolvedFontFamily(s.sansSerifFont, faces, 'sans-serif') : resolvedFontFamily(s.serifFont, faces);
+  return `${fontFaceStyles(faces, sources)}
     ${s.defaultCJKFont ? `@font-face{font-family:'Readest CJK';src:${cjkSource};font-weight:100 900;unicode-range:U+2E80-9FFF,U+AC00-D7AF,U+F900-FAFF,U+FE30-FE4F,U+FF00-FFEF,U+20000-3134F}` : ''}
     html,body{font-size:${s.fontSize}px!important;font-weight:${s.fontWeight};-webkit-text-size-adjust:none;text-size-adjust:none}
     :where(html){font-family:${cjk}${family}${s.overrideFont ? '!important' : ''}}
     ${s.overrideFont ? `html body{font-family:${cjk}${family}!important}
-      body *:not(pre,code,kbd,samp):not(pre *,code *,kbd *,samp *){font-family:revert!important}
+      body *:not(pre,code,kbd,samp):not(pre *,code *,kbd *,samp *){font-family:inherit!important}
       p,li,div,pre,dd{font-size:max(1rem,${s.minimumFontSize}px)!important}` : ''}
-    ${s.overrideFont ? 'html body :is(pre,code,kbd,samp)' : ':where(pre,code,kbd,samp)'}{font-family:${cssFamily(s.monospaceFont, 'monospace')}${s.overrideFont ? '!important' : ''}}
+    ${s.overrideFont ? 'html body :is(pre,code,kbd,samp)' : ':where(pre,code,kbd,samp)'}{font-family:${resolvedFontFamily(s.monospaceFont, faces, 'monospace')}${s.overrideFont ? '!important' : ''}}
     ${s.useBookLayout ? '' : `body{line-height:${s.lineHeight}!important;word-spacing:${s.wordSpacing}px!important;letter-spacing:${s.letterSpacing}px!important}
       p,div,li,blockquote{line-height:${s.lineHeight}!important;word-spacing:${s.wordSpacing}px!important;letter-spacing:${s.letterSpacing}px!important}
       p{margin-block:${s.paragraphMargin}em!important;text-indent:${s.textIndent}em!important;text-align:${s.fullJustification ? 'justify' : 'start'}!important;hyphens:${s.hyphenation ? 'auto' : 'none'}!important}`}`;

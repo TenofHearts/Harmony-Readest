@@ -11,13 +11,33 @@ import { removeLocalFile } from './LocalFiles';
 export class FontLibrary {
   fonts: CustomFont[] = [];
   systemFonts: string[] = [];
+  private systemFaces: CustomFont[] = [];
+  private builtinFaces: CustomFont[] = [];
   private prefs?: preferences.Preferences;
   private directory: string = '';
   private context?: common.UIAbilityContext;
 
   async init(context: common.UIAbilityContext): Promise<void> {
     this.context = context; this.directory = `${context.filesDir}/fonts`;
-    try { this.systemFonts = uiFont.getSystemFontList().filter((name: string) => name.length <= 128 && !/[\x00-\x1f]/.test(name)); } catch {}
+    this.systemFaces = [];
+    try {
+      for (const name of uiFont.getSystemFontList()) {
+        if (name.length > 128 || /[\x00-\x1f]/.test(name)) continue;
+        try {
+          const info = uiFont.getFontByName(name);
+          if (!info.path || !this.exists(info.path)) continue;
+          const face = new CustomFont(); face.id = `system-${this.systemFaces.length}`;
+          face.family = name; face.path = info.path; face.weight = info.weight || 400;
+          face.style = info.italic ? 'italic' : 'normal';
+          this.systemFaces.push(face);
+        } catch {}
+      }
+    } catch {}
+    this.systemFonts = this.systemFaces.map((face: CustomFont) => face.family);
+    this.builtinFaces = [];
+    this.addBuiltin('Readest Serif', 'serif', ['NotoSerifCJK', 'NotoSerif'], ['NotoSerifCJK-Regular.ttc', 'NotoSerif[wdth,wght].ttf']);
+    this.addBuiltin('Readest Sans', 'sans-serif', ['HarmonyOS_Sans_SC', 'NotoSansCJK', 'HarmonyOS_Sans.ttf', 'NotoSans['], ['HarmonyOS_Sans_SC.ttf', 'NotoSansCJK-Regular.ttc', 'HarmonyOS_Sans.ttf']);
+    this.addBuiltin('Readest Mono', 'monospace', ['NotoSansMono'], ['NotoSansMono[wdth,wght].ttf']);
     if (!this.exists(this.directory)) fs.mkdirSync(this.directory);
     this.prefs = await preferences.getPreferences(context, { name: 'custom_fonts' });
     this.fonts = JSON.parse(await this.prefs.get('fonts', '[]') as string) as CustomFont[];
@@ -28,6 +48,32 @@ export class FontLibrary {
 
   private register(font: CustomFont): void {
     try { uiFont.registerFont({ familyName: font.family, familySrc: `file://${font.path}` }); } catch {}
+  }
+
+  private addBuiltin(family: string, id: string, files: string[], fallbacks: string[]): void {
+    let source: CustomFont | undefined;
+    for (const file of files) {
+      source = this.systemFaces.find((face: CustomFont) => face.path.split('/').pop()!.startsWith(file));
+      if (source) break;
+    }
+    if (!source) {
+      // HarmonyOS can enumerate only theme fonts while keeping bundled fonts readable.
+      for (const file of fallbacks) {
+        const path = `/system/fonts/${file}`;
+        if (!this.exists(path)) continue;
+        source = new CustomFont(); source.path = path; break;
+      }
+    }
+    if (!source) return;
+    const face = new CustomFont(); face.id = `builtin-${id}`; face.family = family; face.path = source.path;
+    face.weight = source.weight; face.style = source.style; this.builtinFaces.push(face);
+    // Native generic names and ArkWeb generic names can resolve differently.
+    this.register(face);
+  }
+
+  nativeFamily(value: string): string {
+    const id = `builtin-${value}`;
+    return this.builtinFaces.find((face: CustomFont) => face.id === id)?.family || value;
   }
 
   private exists(path: string): boolean { try { return fs.accessSync(path); } catch { return false; } }
@@ -100,8 +146,12 @@ export class FontLibrary {
     removeLocalFile(font.path);
   }
 
+  readerFontFiles(): CustomFont[] {
+    return this.fonts.concat(this.systemFaces.filter((face: CustomFont) => !this.fonts.some((font: CustomFont) => font.family === face.family))).concat(this.builtinFaces);
+  }
+
   readerFonts(origin: string): ReaderFont[] {
-    return this.fonts.map((font: CustomFont): ReaderFont => {
+    return this.readerFontFiles().map((font: CustomFont): ReaderFont => {
       const result = new ReaderFont(); result.family = font.family; result.style = font.style;
       result.weight = font.variable ? '100 900' : `${font.weight}`; result.url = `${origin}/fonts/${font.id}`; return result;
     });

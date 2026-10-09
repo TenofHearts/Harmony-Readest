@@ -117,6 +117,26 @@ test('account/session cancellation stops responses from applying', async () => {
   const { engine, result } = coordinator({ pull: async () => { active = false; return { progress: pointer, timestamp: 50 }; }, push: async () => assert.fail() }, { active: () => active });
   await engine.sync(b, 'reconcile'); assert.equal(result.saved.length, 0); assert.equal(b.dirty, true);
 });
+
+test('closed-book uploads require prior reconciliation and never bypass an unresolved position choice', async () => {
+  const b = book(); let pushes = 0;
+  const { engine, result } = coordinator({ pull: async () => ({ progress: '/body/DocFragment[3]/body/p', percentage: .7 }), push: async () => { pushes++; } });
+  await engine.uploadPending(b, () => true); assert.equal(pushes, 0);
+  await engine.sync(b, 'reconcile'); assert.equal(result.conflicts.length, 1);
+  await engine.uploadPending(b, () => true); assert.equal(pushes, 0); assert.equal(b.dirty, true);
+});
+
+test('background close uploads preserve newer edits and ignore responses after an account change', async () => {
+  const b = book(); let edit = false, active = true;
+  const { engine, result } = coordinator({ pull: async () => null, push: async () => {
+    if (edit) { b.position.revision++; active = false; } return { timestamp: 42 };
+  } });
+  await engine.sync(b, 'reconcile'); b.dirty = true; edit = true;
+  const saved = result.saved.length;
+  await engine.uploadPending(b, () => active); assert.equal(b.dirty, true); assert.equal(result.saved.length, saved);
+  active = true;
+  await engine.uploadPending(b, () => true); assert.equal(b.dirty, true, 'An older snapshot cannot acknowledge the concurrent edit');
+});
 test('missing timestamps and percentages still allow a user choice', async () => {
   const b = book(); const { engine, result } = coordinator({ pull: async () => ({ progress: '/body/DocFragment[3]/body/p' }), push: async () => assert.fail() });
   await engine.sync(b, 'reconcile'); assert.equal(result.conflicts.length, 1); assert.equal(result.saved.length, 0);

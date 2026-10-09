@@ -425,6 +425,54 @@ try {
     const doc = window.readerTest.getView().renderer.getContents()[0].doc; return doc.defaultView.getComputedStyle(doc.querySelector('#copy')).fontFamily;
   }), 'Georgia');
   report.tests.push('Full font and layout controls: real custom font rendering, publisher overrides, minimum size, weight, spacing, margins, columns, scroll flow, preserved publisher layout and no synthetic reading edits');
+  const reopenSettings = await page.evaluate(() => ({ ...window.readerTest.getSettings(), themeMode: 'dark', themeColor: 'nord', serifFont: 'Test Custom', overrideFont: true }));
+  await command({ type: 'close' });
+  assert.equal(await page.evaluate(() => !!window.readerTest.getView()), false);
+  await command({ session: 'reopened', type: 'open', url: `${origin}/books/styled.epub`, settings: reopenSettings });
+  const reopened = await page.evaluate(async () => {
+    await document.fonts.ready;
+    const doc = window.readerTest.getView().renderer.getContents()[0].doc;
+    await doc.fonts.ready;
+    return { settings: window.readerTest.getSettings(), family: doc.defaultView.getComputedStyle(doc.querySelector('#copy')).fontFamily,
+      chrome: getComputedStyle(document.querySelector('#reader-chrome')).fontFamily, loaded: document.fonts.check('14px "Test Custom"'),
+      option: document.querySelector('[data-setting="serifFont"] option[value="Test Custom"]').style.fontFamily };
+  });
+  assert.equal(reopened.settings.themeMode, 'dark'); assert.equal(reopened.settings.themeColor, 'nord');
+  assert.ok(reopened.family.includes('Test Custom')); assert.ok(reopened.chrome.includes('Test Custom'));
+  assert.equal(reopened.loaded, true); assert.ok(reopened.option.includes('Test Custom'));
+  await command({ session: 'reopened', type: 'fonts', fonts: ['Readest Serif', 'Readest Sans', 'Readest Mono'].map(family => ({ family, style: 'normal', weight: '400', url: `${origin}/fonts/test.ttf` })) });
+  await command({ session: 'reopened', type: 'appearance', settings: { defaultFont: 'serif', serifFont: 'serif', sansSerifFont: 'sans-serif', monospaceFont: 'monospace', defaultCJKFont: '', overrideFont: true } });
+  async function renderedBuiltin() {
+    return page.evaluate(async () => {
+      const doc = window.readerTest.getView().renderer.getContents()[0].doc;
+      await doc.fonts.ready;
+      return { family: doc.defaultView.getComputedStyle(doc.querySelector('#copy')).fontFamily,
+        faces: Array.from(doc.fonts).map(face => ({ family: face.family, status: face.status })) };
+    });
+  }
+  const serif = await renderedBuiltin();
+  assert.ok(serif.family.includes('Readest Serif'));
+  assert.ok(serif.faces.some(face => face.family.includes('Readest Serif') && face.status === 'loaded'));
+  await command({ session: 'reopened', type: 'appearance', settings: { defaultFont: 'sans-serif' } });
+  const sans = await renderedBuiltin();
+  assert.ok(sans.family.includes('Readest Sans'));
+  assert.ok(sans.faces.some(face => face.family.includes('Readest Sans') && face.status === 'loaded'));
+  assert.equal(await page.locator('[data-setting="serifFont"] option[value="Readest Serif"]').count(), 0);
+  report.tests.push('Generic serif and sans-serif selections load explicit native font files and change the rendered chapter family');
+  await command({ session: 'reopened', type: 'close' });
+  await command({ session: 'cached', type: 'open', url: `${origin}/books/continuous.epub` });
+  await page.evaluate(() => {
+    window.chapterParses = 0;
+    for (const section of window.readerTest.getBook().sections) {
+      const create = section.createDocument.bind(section);
+      section.createDocument = (...args) => { window.chapterParses++; return create(...args); };
+    }
+  });
+  for (const type of ['next', 'previous', 'next']) await command({ session: 'cached', type });
+  assert.equal(await page.evaluate(() => window.chapterParses), 0, 'Page turns reuse the canonical chapter document');
+  assert.ok(await page.evaluate(() => window.events.filter(e => e.session === 'cached' && e.type === 'position').at(-1).position.xpointer));
+  await command({ session: 'cached', type: 'close' });
+  report.tests.push('Reopen applies native settings with a new session; custom fonts render in chrome and font items; page turns reuse canonical chapter documents and close releases the renderer');
   assert.deepEqual(report.consoleErrors, []);
   await mkdir('output/playwright', { recursive: true });
   await writeFile('output/playwright/browser-results.json', JSON.stringify(report, null, 2));

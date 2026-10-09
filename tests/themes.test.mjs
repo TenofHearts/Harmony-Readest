@@ -55,3 +55,13 @@ test('real repository preserves the legacy shelf on upgrade and reloads both the
   await restarted.saveLibrarySettings({ themeMode: 'dark', themeColor: 'grass' });
   assert.equal((await restarted.settings()).themeColor, 'nord');
 });
+
+test('app language survives restart and invalid stored choices fall back to System', async () => {
+  const values = new Map();
+  const prefs = { async get(key, fallback) { return values.get(key) ?? fallback; }, async put(key, value) { values.set(key, value); }, async flush() {} };
+  const original = new Repository(); original.prefs = prefs;
+  assert.equal(await original.language(), 'auto'); await original.saveLanguage('zh-Hans');
+  const restarted = new Repository(); restarted.prefs = prefs; assert.equal(await restarted.language(), 'zh-Hans');
+  await restarted.saveLanguage('en'); assert.equal(await original.language(), 'en');
+  values.set('language', 'bad'); assert.equal(await restarted.language(), 'auto');
+});

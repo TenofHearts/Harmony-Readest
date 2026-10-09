@@ -7,7 +7,7 @@ import { partialMD5 } from '../../vendor/readest/apps/readest-app/src/utils/md5'
 import { getCFIFromXPointer, getXPointerFromCFI, XCFI } from '../../vendor/readest/apps/readest-app/src/utils/xcfi';
 import { createChrome } from './chrome';
 import { palette, themeIsDark } from './palette';
-import { defaultTypography, typographyStyles, enforceMinimumFont, restoreMinimumFont, type ReaderFont } from './typography';
+import { defaultTypography, typographyStyles, fontFaceStyles, builtinFontFamilies, enforceMinimumFont, restoreMinimumFont, type ReaderFont } from './typography';
 declare const __READER_TEST__: boolean;
 
 // Only this trusted top-level page can send native events. EPUB frames are script-disabled.
@@ -23,13 +23,16 @@ let archive: ZipReader<any> | undefined;
 let suppress = 0;
 let lastPosition: any;
 let eventQueue = Promise.resolve();
+const locatorDocuments = new Map<number, Document>();
 let userActionUntil = 0;
 let lastTapTurnAt = 0;
 let settings = { ...defaultTypography };
 let fonts: ReaderFont[] = [];
 const fontSources = new Map<string, string>();
+const chromeFonts = document.createElement('style'); document.head.append(chromeFonts);
 async function loadSelectedFonts() {
-  const families = [settings.serifFont, settings.sansSerifFont, settings.monospaceFont, settings.defaultCJKFont];
+  const selected = [settings.defaultFont === 'sans-serif' ? settings.sansSerifFont : settings.serifFont, settings.monospaceFont, settings.defaultCJKFont];
+  const families = selected.map(name => builtinFontFamilies[name] && fonts.some(face => face.family === builtinFontFamilies[name]) ? builtinFontFamilies[name] : name);
   for (const face of fonts) if (families.includes(face.family) && !fontSources.has(face.url)) {
     const response = await fetch(face.url); if (!response.ok) throw Error('INVALID_FONT');
     fontSources.set(face.url, URL.createObjectURL(await response.blob()));
@@ -116,6 +119,7 @@ const flattenTOC = (items: any[], depth = 0): any[] => items.flatMap(item => [
 ]);
 
 function appearance() {
+  chromeFonts.textContent = fontFaceStyles(fonts, fontSources, true);
   const dark = themeIsDark(settings.themeMode, systemDark());
   const { bg, fg } = palette(settings.themeColor, dark);
   document.body.style.background = bg;
@@ -170,7 +174,18 @@ bindGestures(document);
 async function snapshot(location: any, capturedSession: string, restored: boolean) {
   if (!location?.cfi || capturedSession !== session) return;
   let xpointer = '';
-  try { xpointer = (await getXPointerFromCFI(location.cfi, undefined, undefined, book)).xpointer; } catch {}
+  try {
+    const index = XCFI.extractSpineIndex(location.cfi);
+    let doc = locatorDocuments.get(index);
+    if (!doc) {
+      doc = await book.sections[index].createDocument();
+      if (capturedSession !== session) return;
+      locatorDocuments.set(index, doc!);
+      // Reuse canonical chapter DOMs for page turns without retaining an entire book.
+      if (locatorDocuments.size > 2) locatorDocuments.delete(locatorDocuments.keys().next().value!);
+    }
+    xpointer = (await getXPointerFromCFI(location.cfi, doc, index, book)).xpointer;
+  } catch {}
   if (capturedSession !== session) return;
   const fraction = Math.max(0, Math.min(1, location.fraction ?? 0));
   lastPosition = { cfi: location.cfi, xpointer, percentage: fraction, chapter: simpleText(location.tocItem?.label) };
@@ -180,6 +195,8 @@ async function snapshot(location: any, capturedSession: string, restored: boolea
 
 async function close() {
   suppress++;
+  restoreMinimumFont();
+  locatorDocuments.clear();
   chrome.close();
   view?.close(); view?.remove(); view = undefined;
   book?.destroy?.(); book = undefined;
@@ -191,6 +208,7 @@ async function close() {
 async function open(command: any) {
   await close();
   session = command.session;
+  if (command.settings) { settings = { ...defaultTypography, ...command.settings }; await loadSelectedFonts(); }
   suppress++;
   try {
     document.getElementById('error')!.textContent = '';
@@ -254,7 +272,7 @@ async function receive(command: any) {
     }
     if (['next', 'previous', 'navigate', 'fraction', 'nextSection', 'previousSection', 'historyBack', 'historyForward'].includes(command.type)) userActionUntil = Date.now() + 3000;
     if (command.type === 'open') await open(command);
-    else if (command.type === 'close') { await eventQueue; emit('closed', { position: lastPosition }); await close(); }
+    else if (command.type === 'close') { await eventQueue; await close(); emit('closed'); session = ''; }
     else if (command.type === 'next') await view?.next();
     else if (command.type === 'previous') await view?.prev();
     else if (command.type === 'nextSection') await view?.renderer?.nextSection?.();

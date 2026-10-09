@@ -26,6 +26,15 @@ const result = await build({
   }}]
 });
 const { ReaderGateway, READER_ORIGIN } = await import(`data:text/javascript;base64,${Buffer.from(result.outputFiles[0].text).toString('base64')}`);
+
+test('each open sends appearance atomically with the new book session', async () => {
+  let command;
+  const gateway = new ReaderGateway({}, { async runJavaScript(script) { command = JSON.parse(script.slice('window.readerReceive('.length, -1)); } });
+  const settings = { themeMode: 'dark', themeColor: 'nord', serifFont: 'Selected Font' };
+  await gateway.open({ id: 'book', position: { cfi: 'epubcfi(saved)' } }, false, settings, true);
+  assert.deepEqual(command.settings, settings); assert.equal(command.session, 'session'); assert.equal(command.systemDark, true);
+  assert.equal(command.type, 'open'); assert.equal(command.cfi, 'epubcfi(saved)');
+});
 globalThis.WebResourceResponse = class {
   constructor() { this.done = new Promise(resolve => this.resolve = resolve); }
   setResponseEncoding() {} setReasonMessage() {} setResponseMimeType() {}
@@ -50,4 +59,16 @@ test('EPUB binary response owns and closes its file once; cancelling cannot doub
   assert.equal(gatewayFixture.opens, 1); assert.equal(gatewayFixture.closes, 1);
   assert.equal(gateway.resource(`${READER_ORIGIN}/books/book.epub`).code, 404);
   assert.equal(gateway.resource('https://example.com/tracker').code, 404);
+});
+
+test('system fonts are served as binary font resources only for registered font identifiers', async () => {
+  const bytes = Uint8Array.from([0, 1, 0, 0, 23, 42]);
+  globalThis.gatewayFixture = { bytes, opens: 0, closes: 0 };
+  const gateway = new ReaderGateway({}, {});
+  gateway.fonts = [{ id: 'system-0', family: 'Fixture Sans', path: '/system/fonts/fixture.ttf' }];
+  const response = gateway.resource(`${READER_ORIGIN}/fonts/system-0`); await response.done;
+  assert.equal(response.code, 200); assert.deepEqual(new Uint8Array(response.data), bytes);
+  assert.equal(gatewayFixture.opens, 1); assert.equal(gatewayFixture.closes, 1);
+  assert.equal(gateway.resource(`${READER_ORIGIN}/fonts/../../private/secret`).code, 404);
+  assert.equal(gateway.resource(`${READER_ORIGIN}/fonts/system-1`).code, 404);
 });

@@ -1,4 +1,5 @@
 import layout from './chrome.css';
+import { cssFamily, resolvedFontFamily, builtinFontFamilies } from './typography';
 import motion from './readest-motion.css';
 import { BUILTIN_THEMES, palette, themeIsDark } from './palette';
 import { type Appearance, type ReaderFont } from './typography';
@@ -99,10 +100,10 @@ export function createChrome(host: ChromeHost) {
   };
   const flagRow = (key: keyof Appearance) => `<div class="settings-row"><label for="setting-${key}">${text(labels[key])}</label><input id="setting-${key}" type="checkbox" role="switch" data-setting="${key}" aria-label="${text(labels[key])}"></div>`;
   const fontRow = (key: keyof Appearance, fallback: string) => {
-    const options = key === 'defaultFont' ? ['serif', 'sans-serif'] : [...new Set([fallback, ...host.getFonts().map(f => f.family)])];
+    const options = key === 'defaultFont' ? ['serif', 'sans-serif'] : [...new Set([fallback, ...host.getFonts().filter(f => !Object.values(builtinFontFamilies).includes(f.family)).map(f => f.family)])];
     const selected = String(host.getSettings()[key]);
     if (!options.includes(selected)) options.push(selected);
-    return `<div class="settings-row"><label for="setting-${key}">${text(labels[key])}</label><select id="setting-${key}" data-setting="${key}" aria-label="${text(labels[key])}">${options.map(value => `<option value="${text(value)}">${text(labels[value] || (value ? value : labels.bookFont))}</option>`).join('')}</select></div>`;
+    return `<div class="settings-row"><label for="setting-${key}">${text(labels[key])}</label><select id="setting-${key}" data-setting="${key}" aria-label="${text(labels[key])}">${options.map(value => `<option value="${text(value)}" style="font-family:${text(cssFamily(value || 'system-ui'))}">${text(labels[value] || (value ? value : labels.bookFont))}</option>`).join('')}</select></div>`;
   };
   const boxed = (label: string, rows: string) => `<h3 class="setting-section">${text(labels[label])}</h3><div class="boxed-settings">${rows}</div>`;
   const fontPanel = () => `<div class="font-tabs" role="tablist">${['fonts', 'layout'].map(tab => `<button type="button" role="tab" data-font-tab="${tab}" aria-selected="${fontTab === tab}">${text(labels[tab])}</button>`).join('')}</div>
@@ -153,8 +154,14 @@ export function createChrome(host: ChromeHost) {
     root.querySelector<HTMLElement>('.chapter-label')!.textContent = chapter || title;
     for (const action of ['historyBack', 'historyForward']) for (const b of root.querySelectorAll<HTMLButtonElement>(`[data-action='${action}']`)) b.disabled = !host.getView()?.history?.[action === 'historyBack' ? 'canGoBack' : 'canGoForward'];
   }
-  function updateAppearance() {
-    const settings = host.getSettings();
+  function updateAppearance(settings = host.getSettings()) {
+    const primary = settings.defaultFont === 'sans-serif' ? resolvedFontFamily(settings.sansSerifFont, host.getFonts(), 'sans-serif') : resolvedFontFamily(settings.serifFont, host.getFonts());
+    const family = settings.defaultCJKFont ? `${cssFamily(settings.defaultCJKFont)}, ${primary}` : primary;
+    root.style.fontFamily = family;
+    for (const select of root.querySelectorAll<HTMLSelectElement>('select[data-setting]')) {
+      const key = select.dataset.setting as keyof Appearance;
+      select.style.fontFamily = key === 'defaultFont' ? family : cssFamily(String(settings[key]) || 'system-ui');
+    }
     const dark = themeIsDark(settings.themeMode, host.getSystemDark());
     const theme = palette(settings.themeColor, dark);
     const colors = [theme.bg, theme.inset, theme.fg, theme.muted, theme.line];
@@ -179,6 +186,8 @@ export function createChrome(host: ChromeHost) {
     (root.querySelector('[data-action="increase"]') as HTMLButtonElement).disabled = settings.fontSize >= 120;
   }
   function appearance(settings: Appearance) {
+    // Reflect dependent controls immediately while a selected font is loading.
+    updateAppearance(settings);
     host.command({ type: 'appearance', settings }); host.emit('appearanceChanged', { settings });
   }
   root.addEventListener('click', event => {
@@ -213,7 +222,12 @@ export function createChrome(host: ChromeHost) {
         if (!target.value.trim() || !Number.isFinite(value) || value < min || value > max || key === 'maxColumnCount' && !Number.isInteger(value)) { updateAppearance(); return; }
         (settings as any)[key] = value;
         if (key === 'minimumFontSize' || key === 'fontSize') settings.fontSize = Math.max(settings.fontSize, settings.minimumFontSize);
-      } else (settings as any)[key] = target.value;
+      } else {
+        (settings as any)[key] = target.value;
+        settings.overrideFont = true;
+        if (key === 'serifFont') settings.defaultFont = 'serif';
+        if (key === 'sansSerifFont') settings.defaultFont = 'sans-serif';
+      }
       appearance(settings);
     }
   });

@@ -2,7 +2,7 @@ import { common } from '@kit.AbilityKit';
 import { webview } from '@kit.ArkWeb';
 import { fileIo as fs } from '@kit.CoreFileKit';
 import { util } from '@kit.ArkTS';
-import { BookRecord, CustomFont, ReaderCommand, ReaderEvent, ReadingPosition, RemoteProgress } from '../core/Models';
+import { BookRecord, CustomFont, ReaderCommand, ReaderEvent, ReaderSettings, ReadingPosition, RemoteProgress } from '../core/Models';
 import { isCurrentSession } from '../core/SyncPolicy';
 
 export const READER_ORIGIN: string = 'https://reader.harmonyreadest.invalid';
@@ -56,11 +56,12 @@ export class ReaderGateway {
     await this.controller.runJavaScript(`window.readerReceive(${JSON.stringify(command)})`);
   }
 
-  async open(book: BookRecord, metadataOnly: boolean = false): Promise<void> {
+  async open(book: BookRecord, metadataOnly: boolean = false, settings?: ReaderSettings, systemDark?: boolean): Promise<void> {
     this.cancel();
     this.book = book; this.session = util.generateRandomUUID();
     const command = new ReaderCommand(); command.type = 'open'; command.cfi = book.position.cfi;
     command.metadataOnly = metadataOnly;
+    command.settings = settings; command.systemDark = systemDark;
     command.url = `${READER_ORIGIN}/books/${book.id}.epub`;
     await this.send(command);
   }

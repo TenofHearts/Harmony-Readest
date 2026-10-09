@@ -27,6 +27,21 @@ export class ProgressCoordinator {
     return task;
   }
 
+  // Continue an already reconciled upload after the renderer session closes.
+  // Unresolved choices and newer revisions retain the same protection as reading uploads.
+  uploadPending(book: BookRecord, active: () => boolean): Promise<void> {
+    const task = this.queue.then(async () => {
+      if (!this.reconciled || this.awaitingChoice || !book.dirty || !book.hash || !active()) return;
+      const snapshot = JSON.parse(JSON.stringify(book.position)) as ReadingPosition;
+      const ack = await this.provider.push(book.hash, snapshot);
+      if (!active()) return;
+      book.remoteToken = ack?.timestamp ? remoteToken(ack) : uploadedToken(snapshot.xpointer, snapshot.percentage, ack?.device_id || '');
+      if (canAcknowledge(snapshot.revision, book.position.revision)) book.dirty = false;
+      await this.hooks.save(book);
+    });
+    this.queue = task.catch(() => {}); return task;
+  }
+
   private async run(book: BookRecord, mode: string): Promise<void> {
     if (!this.hooks.active() || !book.hash) return;
     if (mode === 'upload' && (!this.reconciled || this.awaitingChoice)) return;

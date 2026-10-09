@@ -3,6 +3,7 @@ import { webview } from '@kit.ArkWeb';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { BookRecord, CustomFont, KoSyncSettings, ReaderSettings, ReaderChromeState, ThemeSettings } from '../core/Models';
 import { numericSetting, setNumericSetting } from '../core/TypographyPolicy';
+import { preferredFont } from '../core/AppearancePolicy';
 import { BUILTIN_THEMES, ThemeDefinition, ThemePalette, themePalette, themeIsDark } from '../core/Themes';
 import { AppWindow } from '../services/AppWindow';
 import { AppController } from '../services/AppController';
@@ -15,6 +16,39 @@ class BridgeReceiver {
   post(value: string): void { this.deliver(value); }
 }
 
+class ShelfPosition {
+  percentage: number = 0;
+  revision: number = 0;
+}
+
+class ShelfBook {
+  id: string = '';
+  title: string = '';
+  author: string = '';
+  filename: string = '';
+  path: string = '';
+  cover: string = '';
+  lastOpenedAt: number = 0;
+  position: ShelfPosition = new ShelfPosition();
+}
+
+class ShelfDataSource implements IDataSource {
+  private items: ShelfBook[] = [];
+  private listeners: DataChangeListener[] = [];
+  totalCount(): number { return this.items.length; }
+  getData(index: number): ShelfBook { return this.items[index]; }
+  registerDataChangeListener(listener: DataChangeListener): void {
+    if (!this.listeners.includes(listener)) this.listeners.push(listener);
+  }
+  unregisterDataChangeListener(listener: DataChangeListener): void {
+    this.listeners = this.listeners.filter((item: DataChangeListener) => item !== listener);
+  }
+  update(items: ShelfBook[]): void {
+    this.items = items;
+    for (const listener of this.listeners) listener.onDataReloaded();
+  }
+}
+
 @Entry
 @Component
 struct Index {
@@ -22,7 +56,7 @@ struct Index {
   private app?: AppController;
   private gateway?: ReaderGateway;
   private receiver: BridgeReceiver = new BridgeReceiver((value: string) => this.gateway?.post(value));
-  @State books: BookRecord[] = [];
+  @State books: ShelfBook[] = [];
   @State reading: boolean = false;
   @State busy: boolean = false;
   @State controls: boolean = true;
@@ -53,6 +87,17 @@ struct Index {
   @State fontSection: string = 'fonts';
   @State customFonts: CustomFont[] = [];
   @State importingFonts: boolean = false;
+  @State fontPicker: string = '';
+  @State appFontFamily: string = 'serif';
+  @State language: string = 'auto';
+  @State languageEpoch: number = 0;
+  private translations: Record<string, string> = {};
+  private resourceLanguage: string = '';
+  private shelfSnapshot: string = '';
+  private typographySnapshot: string = '';
+  private chromeSnapshot: string = '';
+  private shelfSource: ShelfDataSource = new ShelfDataSource();
+  @State visibleCount: number = 0;
   @State replicaEmail: string = '';
   @State replicaPassword: string = '';
   @State replicaConnected: boolean = false;
@@ -110,6 +155,7 @@ struct Index {
 
   aboutToDisappear(): void { AppWindow.changed = () => {}; this.app?.dispose(); }
   onBackPress(): boolean {
+    if (this.fontPicker) { this.fontPicker = ''; return true; }
     if (this.confirmFontRemove) { this.confirmFontRemove = ''; return true; }
     if (this.confirmRemove) { this.confirmRemove = ''; return true; }
     if (this.conflict) return true;
@@ -121,9 +167,20 @@ struct Index {
 
   private refresh(): void {
     if (!this.app) return;
-    this.books = this.app.books.filter((book: BookRecord) => !book.cloudDeleted && (!!book.path || book.cloudAccount === this.app!.replica.config.userId))
-      .map((book: BookRecord) => JSON.parse(JSON.stringify(book)) as BookRecord);
     this.reading = !!this.app.activeBook && !this.app.importing; this.busy = this.app.busy;
+    const locale = `${this.app.language}:${(this.getUIContext().getHostContext() as common.UIAbilityContext).config.language}`;
+    if (locale !== this.resourceLanguage) { this.resourceLanguage = locale; this.translations = {}; this.languageEpoch++; }
+    this.language = this.app.language;
+    if (!this.reading) {
+      const shelf = this.app.books.filter((book: BookRecord) => !book.cloudDeleted && (!!book.path || book.cloudAccount === this.app!.replica.config.userId))
+        .map((book: BookRecord) => {
+          const item = new ShelfBook(); item.id = book.id; item.title = book.title; item.author = book.author;
+          item.filename = book.filename; item.path = book.path; item.cover = book.cover; item.lastOpenedAt = book.lastOpenedAt;
+          item.position.percentage = book.position.percentage; item.position.revision = book.position.revision; return item;
+        });
+      const snapshot = JSON.stringify(shelf);
+      if (snapshot !== this.shelfSnapshot) { this.shelfSnapshot = snapshot; this.books = shelf; this.updateShelf(); }
+    }
     this.controls = this.app.controls;
     this.chapter = this.app.activeBook?.position.chapter || ''; this.progress = (this.app.activeBook?.position.percentage || 0) * 100;
     this.status = this.app.status; this.error = this.app.error;
@@ -133,9 +190,15 @@ struct Index {
     this.conflict = !!this.app.conflict; this.remotePercent = (this.app.conflictPreview?.percentage ?? this.app.conflict?.percentage ?? 0) * 100;
     this.remoteDevice = this.app.conflict?.device || this.t('remote'); this.remoteChapter = this.app.conflictPreview?.chapter || '';
     this.initialized = this.app.initialized && !!this.gateway?.ready;
-    this.fontSize = this.app.appearance.fontSize; this.lineHeight = this.app.appearance.lineHeight;
-    this.typography = JSON.parse(JSON.stringify(this.app.appearance)) as ReaderSettings;
-    this.customFonts = this.app.fonts.fonts.slice();
+    const appearance = this.reading ? this.app.activeAppearance : this.app.appearance;
+    this.fontSize = appearance.fontSize; this.lineHeight = appearance.lineHeight;
+    const typography = JSON.stringify(appearance);
+    if (typography !== this.typographySnapshot) { this.typographySnapshot = typography; this.typography = JSON.parse(typography) as ReaderSettings; }
+    const primary = this.app.fonts.nativeFamily(preferredFont(this.app.appearance));
+    this.appFontFamily = this.app.appearance.defaultCJKFont ? `${this.app.appearance.defaultCJKFont},${primary}` : this.fontFamily(primary);
+    if (this.customFonts.length !== this.app.fonts.fonts.length || this.customFonts.some((font: CustomFont, index: number) => font.id !== this.app!.fonts.fonts[index].id)) {
+      this.customFonts = this.app.fonts.fonts.slice();
+    }
     const replica = this.app.replica;
     this.replicaConnected = !!replica.config.userId; this.replicaAccount = replica.config.email;
     this.replicaEnabled = replica.config.enabled; this.replicaFonts = replica.config.syncFonts;
@@ -205,11 +268,17 @@ struct Index {
       labels["bookFont"] = this.t("book_font");
       chrome.safeTop = this.safeTop; chrome.safeBottom = this.safeBottom;
       const command = this.app.command('chrome'); command.chrome = chrome; command.systemDark = this.systemDark;
-      this.gateway.send(command).catch(() => {});
-    }
+      const snapshot = JSON.stringify(chrome);
+      if (snapshot !== this.chromeSnapshot) { this.chromeSnapshot = snapshot; this.gateway.send(command).catch(() => {}); }
+    } else this.chromeSnapshot = '';
   }
 
-  private t(key: string): string { return this.getUIContext().getHostContext()!.resourceManager.getStringByNameSync(key); }
+  private t(key: string): string {
+    const cached = `${this.languageEpoch}:${key}`;
+    if (this.translations[cached] === undefined) this.translations[cached] = this.getUIContext().getHostContext()!.resourceManager.getStringByNameSync(key);
+    return this.translations[cached];
+  }
+  private fontFamily(value: string): string { return this.app?.fonts.nativeFamily(value) || value || 'HarmonyOS Sans'; }
   private activeDark(): boolean { return themeIsDark(this.reading ? this.readerThemeMode : this.libraryThemeMode, this.systemDark); }
   private colors(): ThemePalette { return themePalette(this.reading ? this.readerThemeColor : this.libraryThemeColor, this.activeDark()); }
   private bg(): string { return this.reading ? this.colors().bg : this.colors().inset; }
@@ -233,12 +302,13 @@ struct Index {
     }
   }
   private columns(): string { return `repeat(${Math.min(8, Math.max(2, Math.floor((this.shelfWidth - 32) / 128)))}, 1fr)`; }
-  private visibleBooks(): BookRecord[] {
+  private updateShelf(): void {
     const query = this.query.trim().toLocaleLowerCase();
-    return this.books.filter((book: BookRecord) => `${book.title} ${book.author} ${book.filename}`.toLocaleLowerCase().includes(query))
-      .sort((a: BookRecord, b: BookRecord) => this.sortBy === 'title' ? a.title.localeCompare(b.title) : b.lastOpenedAt - a.lastOpenedAt);
+    const visible = this.books.filter((book: ShelfBook) => `${book.title} ${book.author} ${book.filename}`.toLocaleLowerCase().includes(query))
+      .sort((a: ShelfBook, b: ShelfBook) => this.sortBy === 'title' ? a.title.localeCompare(b.title) : b.lastOpenedAt - a.lastOpenedAt);
+    this.visibleCount = visible.length; this.shelfSource.update(visible);
   }
-  private selectBook(book: BookRecord): void {
+  private selectBook(book: ShelfBook): void {
     const selected = this.app!.books.find((item: BookRecord) => item.id === book.id);
     if (selected && !this.busy) this.run(() => this.app!.open(selected));
   }
@@ -320,6 +390,9 @@ struct Index {
     else if (key === 'sansSerifFont') settings.sansSerifFont = value;
     else if (key === 'monospaceFont') settings.monospaceFont = value;
     else settings.defaultCJKFont = value;
+    settings.overrideFont = true;
+    if (key === 'serifFont') settings.defaultFont = 'serif';
+    if (key === 'sansSerifFont') settings.defaultFont = 'sans-serif';
     this.typography = settings; this.changeAppearance();
   }
 
@@ -389,7 +462,7 @@ struct Index {
 
   @Builder
   sectionTitle(label: string) {
-    Text(label).fontFamily('HarmonyOS Sans').fontSize(12).fontWeight(FontWeight.Medium).fontColor(this.muted()).width('100%').margin({ bottom: 8, top: 20 })
+    Text(label).fontFamily(this.appFontFamily).fontSize(12).fontWeight(FontWeight.Medium).fontColor(this.muted()).width('100%').margin({ bottom: 8, top: 20 })
   }
 
   @Builder
@@ -399,7 +472,7 @@ struct Index {
   notice() {
     if (this.error) {
       Row({ space: 12 }) {
-        Text(this.errorText()).fontFamily('HarmonyOS Sans').fontSize(13).fontColor('#913d35').layoutWeight(1)
+        Text(this.errorText()).fontFamily(this.appFontFamily).fontSize(13).fontColor('#913d35').layoutWeight(1)
         this.iconButton('close', this.t('dismiss'), () => { this.error = ''; this.app!.error = ''; })
       }.padding({ left: 16, right: 8, top: 4, bottom: 4 }).backgroundColor(this.theme === 'dark' ? '#4a2926' : '#f8e4dd').borderRadius(8).width('100%')
     }
@@ -409,7 +482,7 @@ struct Index {
   appearanceControls() {
     Row() {
       ForEach(['fonts', 'layout'], (section: string) => {
-        Button(this.t(section)).layoutWeight(1).height(36).fontSize(14).fontColor(this.fg())
+        Button(this.t(section)).layoutWeight(1).height(36).fontFamily(this.appFontFamily).fontSize(14).fontColor(this.fg())
           .backgroundColor(this.fontSection === section ? this.inset() : Color.Transparent).borderRadius(20)
           .onClick(() => { this.fontSection = section; })
       })
@@ -420,16 +493,16 @@ struct Index {
   @Builder
   numberSetting(key: string, label: string, min: number, max: number, step: number, enabled: boolean = true) {
     Row({ space: 8 }) {
-      Text(this.t(label)).fontFamily('HarmonyOS Sans').fontSize(14).fontColor(this.fg()).layoutWeight(1)
+      Text(this.t(label)).fontFamily(this.appFontFamily).fontSize(14).fontColor(this.fg()).layoutWeight(1)
       Row({ space: 0 }) {
-        Button('−').width(32).height(32).padding(0).fontSize(18).fontColor(this.fg()).backgroundColor(Color.Transparent)
+        Button('−').width(32).height(32).padding(0).fontFamily(this.appFontFamily).fontSize(18).fontColor(this.fg()).backgroundColor(Color.Transparent)
           .enabled(enabled && numericSetting(this.typography, key) > min).accessibilityText(`${this.t('decrease_value')} ${this.t(label)}`)
           .onClick(() => this.setNumber(key, Math.max(min, Number((numericSetting(this.typography, key) - step).toFixed(2)))))
-        TextInput({ text: this.numericDraft[key] !== undefined ? this.numericDraft[key] : `${Number(numericSetting(this.typography, key).toFixed(2))}` }).width(64).height(32).fontSize(14)
+        TextInput({ text: this.numericDraft[key] !== undefined ? this.numericDraft[key] : `${Number(numericSetting(this.typography, key).toFixed(2))}` }).width(64).height(32).fontFamily(this.appFontFamily).fontSize(14)
           .type(min < 0 ? InputType.Normal : InputType.NUMBER_DECIMAL).textAlign(TextAlign.Center).fontColor(this.fg()).backgroundColor(Color.Transparent).enabled(enabled)
           .accessibilityText(this.t(label)).onSubmit((enterKey: EnterKeyType, event: SubmitEvent) => { const number = Number(event.text); if (event.text.trim() && number >= min && number <= max) this.setNumber(key, number); })
           .onChange((value: string) => this.draftNumber(key, value)).onEditChange((editing: boolean) => { if (!editing) this.commitNumber(key, min, max); })
-        Button('+').width(32).height(32).padding(0).fontSize(18).fontColor(this.fg()).backgroundColor(Color.Transparent)
+        Button('+').width(32).height(32).padding(0).fontFamily(this.appFontFamily).fontSize(18).fontColor(this.fg()).backgroundColor(Color.Transparent)
           .enabled(enabled && numericSetting(this.typography, key) < max).accessibilityText(`${this.t('increase_value')} ${this.t(label)}`)
           .onClick(() => this.setNumber(key, Math.min(max, Number((numericSetting(this.typography, key) + step).toFixed(2)))))
       }.backgroundColor(this.inset()).borderRadius(8)
@@ -439,7 +512,7 @@ struct Index {
   @Builder
   switchSetting(key: string, label: string, value: boolean, enabled: boolean = true) {
     Row({ space: 12 }) {
-      Text(this.t(label)).fontFamily('HarmonyOS Sans').fontSize(14).fontColor(this.fg()).layoutWeight(1)
+      Text(this.t(label)).fontFamily(this.appFontFamily).fontSize(14).fontColor(this.fg()).layoutWeight(1)
       Toggle({ type: ToggleType.Switch, isOn: value }).selectedColor(this.primary()).enabled(enabled).accessibilityText(this.t(label))
         .onChange((checked: boolean) => this.setFlag(key, checked))
     }.width('100%').height(56).padding({ left: 16, right: 16 }).opacity(enabled ? 1 : 0.45)
@@ -448,12 +521,47 @@ struct Index {
   @Builder
   fontSetting(key: string, label: string) {
     Row({ space: 8 }) {
-      Text(this.t(label)).fontFamily('HarmonyOS Sans').fontSize(14).fontColor(this.fg()).layoutWeight(1)
-      Select(this.fontChoices(key).map((value: string): SelectOption => { return { value: this.fontLabel(value) }; }))
-        .value(this.fontLabel(this.selectedFont(key))).selected(this.fontChoices(key).indexOf(this.selectedFont(key)))
-        .font({ size: 13 }).fontColor(this.fg()).backgroundColor(Color.Transparent).width('56%')
-        .accessibilityText(this.t(label)).onSelect((index: number) => this.setFont(key, this.fontChoices(key)[index]))
+      Text(this.t(label)).fontFamily(this.appFontFamily).fontSize(14).fontColor(this.fg()).layoutWeight(1)
+      Button(this.fontLabel(this.selectedFont(key))).fontFamily(this.fontFamily(this.selectedFont(key)))
+        .fontSize(13).fontColor(this.fg()).backgroundColor(Color.Transparent).width('56%')
+        .accessibilityText(this.t(label)).onClick(() => { this.fontPicker = key; })
     }.width('100%').height(56).padding({ left: 16, right: 12 })
+  }
+
+  @Builder
+  fontPickerPage() {
+    Column() {
+      Row() {
+        Text(this.t('preferred_font')).fontFamily(this.appFontFamily).fontSize(16).fontColor(this.fg()).layoutWeight(1)
+        this.iconButton('close', this.t('dismiss'), () => { this.fontPicker = ''; })
+      }.width('100%').padding(12)
+      List() {
+        ForEach(this.fontChoices(this.fontPicker), (family: string) => {
+          ListItem() {
+            Button({ type: ButtonType.Normal }) {
+              Row({ space: 12 }) {
+                Text(this.fontLabel(family)).fontFamily(this.fontFamily(family)).fontSize(16).fontColor(this.fg()).layoutWeight(1)
+                if (family === this.selectedFont(this.fontPicker)) { Text('✓').fontFamily(this.appFontFamily).fontColor(this.primary()) }
+              }.width('100%').padding(16)
+            }.width('100%').padding(0).backgroundColor(Color.Transparent)
+              .onClick(() => { this.setFont(this.fontPicker, family); this.fontPicker = ''; })
+          }
+        }, (family: string) => family)
+      }.width('100%').layoutWeight(1)
+    }.width('90%').height('70%').constraintSize({ maxWidth: 560, maxHeight: 640 }).backgroundColor(this.bg()).borderRadius(16)
+  }
+
+  @Builder
+  languageControls() {
+    Row({ space: 8 }) {
+      Text(this.t('app_language')).fontFamily(this.appFontFamily).fontSize(14).fontColor(this.fg()).layoutWeight(1)
+      Select([{ value: this.t('language_system') }, { value: 'English' }, { value: '简体中文' }])
+        .selected(['auto', 'en', 'zh-Hans'].indexOf(this.language))
+        .value(this.language === 'en' ? 'English' : this.language === 'zh-Hans' ? '简体中文' : this.t('language_system'))
+        .font({ size: 13, family: this.appFontFamily }).optionFont({ size: 14, family: this.appFontFamily })
+        .fontColor(this.fg()).backgroundColor(Color.Transparent)
+        .onSelect((index: number) => this.run(() => this.app!.setLanguage(['auto', 'en', 'zh-Hans'][index])))
+    }.width('100%').padding(16).backgroundColor(this.surface()).borderRadius(12)
   }
 
   @Builder
@@ -480,17 +588,17 @@ struct Index {
     this.sectionTitle(this.t('custom_fonts'))
     Column() {
       Row({ space: 12 }) {
-        Text(this.t('manage_fonts')).fontSize(14).fontColor(this.fg()).layoutWeight(1)
-        Button(this.t('add_fonts')).height(36).fontSize(13).fontColor(this.fg()).backgroundColor(this.inset()).borderRadius(8)
+        Text(this.t('manage_fonts')).fontFamily(this.appFontFamily).fontSize(14).fontColor(this.fg()).layoutWeight(1)
+        Button(this.t('add_fonts')).height(36).fontFamily(this.appFontFamily).fontSize(13).fontColor(this.fg()).backgroundColor(this.inset()).borderRadius(8)
           .enabled(!this.importingFonts && !this.replicaBusy).onClick(() => this.importFontFiles())
       }.width('100%').padding(16)
-      Text(this.t('font_formats')).fontSize(12).fontColor(this.muted()).width('100%').padding({ left: 16, right: 16, bottom: 12 })
+      Text(this.t('font_formats')).fontFamily(this.appFontFamily).fontSize(12).fontColor(this.muted()).width('100%').padding({ left: 16, right: 16, bottom: 12 })
       ForEach(this.customFonts, (font: CustomFont) => {
         this.rule()
         Row({ space: 8 }) {
           Column({ space: 4 }) {
             Text(font.name).fontFamily(font.family).fontSize(16).fontColor(this.fg()).maxLines(1)
-            Text(`${font.filename} · ${Math.round(font.byteSize / 1024)} KB`).fontSize(11).fontColor(this.muted()).maxLines(1)
+            Text(`${font.filename} · ${Math.round(font.byteSize / 1024)} KB`).fontFamily(this.appFontFamily).fontSize(11).fontColor(this.muted()).maxLines(1)
           }.layoutWeight(1).alignItems(HorizontalAlign.Start)
           this.iconButton('close', this.t('remove_font'), () => { this.confirmFontRemove = font.id; }, !this.replicaBusy && !this.importingFonts)
         }.width('100%').padding({ left: 16, right: 8, top: 8, bottom: 8 })
@@ -533,28 +641,28 @@ struct Index {
     Column({ space: 16 }) {
       Row() {
         ForEach(['library', 'reader'], (scope: string) => {
-          Button(this.t(scope === 'library' ? 'library' : 'theme_reader')).layoutWeight(1).height(36).fontSize(13).fontColor(this.fg())
+          Button(this.t(scope === 'library' ? 'library' : 'theme_reader')).layoutWeight(1).height(36).fontFamily(this.appFontFamily).fontSize(13).fontColor(this.fg())
             .borderRadius(20).backgroundColor(this.themeScope === scope ? this.inset() : Color.Transparent).onClick(() => { this.themeScope = scope; })
         })
       }.width('100%').padding(2).backgroundColor(this.surface()).borderRadius(24)
       Row({ space: 8 }) {
-        Text(this.t('theme_mode')).fontFamily('HarmonyOS Sans').fontSize(14).fontColor(this.fg()).layoutWeight(1)
+        Text(this.t('theme_mode')).fontFamily(this.appFontFamily).fontSize(14).fontColor(this.fg()).layoutWeight(1)
         Row() {
           ForEach(['auto', 'light', 'dark'], (mode: string) => {
-            Button(this.t(mode === 'auto' ? 'theme_system' : `theme_${mode}`)).height(36).fontSize(12).fontColor(this.fg()).padding({ left: 12, right: 12 })
+            Button(this.t(mode === 'auto' ? 'theme_system' : `theme_${mode}`)).height(36).fontFamily(this.appFontFamily).fontSize(12).fontColor(this.fg()).padding({ left: 12, right: 12 })
               .borderRadius(20).backgroundColor(this.editedMode() === mode ? this.inset() : Color.Transparent)
               .onClick(() => { this.setTheme(mode, this.editedColor()); })
           })
         }.padding(2).backgroundColor(this.surface()).borderRadius(24)
       }.width('100%')
-      Text(this.t('theme_color')).fontFamily('HarmonyOS Sans').fontSize(12).fontWeight(FontWeight.Medium).fontColor(this.muted()).width('100%')
+      Text(this.t('theme_color')).fontFamily(this.appFontFamily).fontSize(12).fontWeight(FontWeight.Medium).fontColor(this.muted()).width('100%')
       ForEach([0, 3, 6, 9], (start: number) => {
         Row({ space: 16 }) {
           ForEach(BUILTIN_THEMES.slice(start, start + 3), (scheme: ThemeDefinition) => {
             Button({ type: ButtonType.Normal }) {
               Column({ space: 6 }) {
-                Text('Aa').fontSize(18).fontWeight(FontWeight.Bold).fontColor(this.previewColors(scheme.name).fg)
-                Text(this.t(`scheme_${scheme.name}`)).fontFamily('HarmonyOS Sans').fontSize(12).fontWeight(FontWeight.Medium)
+                Text('Aa').fontFamily(this.appFontFamily).fontSize(18).fontWeight(FontWeight.Bold).fontColor(this.previewColors(scheme.name).fg)
+                Text(this.t(`scheme_${scheme.name}`)).fontFamily(this.appFontFamily).fontSize(12).fontWeight(FontWeight.Medium)
                   .fontColor(this.previewColors(scheme.name).fg).maxLines(1).textOverflow({ overflow: TextOverflow.Ellipsis })
               }.width('100%').height(88).justifyContent(FlexAlign.Center).padding(8)
             }.layoutWeight(1).height(88).padding(0).borderRadius(8).backgroundColor(this.previewColors(scheme.name).bg)
@@ -573,7 +681,7 @@ struct Index {
     Button({ type: ButtonType.Normal }) {
       Column({ space: 14 }) {
         this.icon('plus', 32)
-        Text(this.t('add_book')).fontFamily('HarmonyOS Sans').fontSize(14).fontWeight(FontWeight.Medium).fontColor(this.fg()).textAlign(TextAlign.Center)
+        Text(this.t('add_book')).fontFamily(this.appFontFamily).fontSize(14).fontWeight(FontWeight.Medium).fontColor(this.fg()).textAlign(TextAlign.Center)
       }.width('100%').height('100%').justifyContent(FlexAlign.Center).padding(12)
     }.width('100%').aspectRatio(28 / 41).padding(0).borderRadius(3).backgroundColor(this.surface())
       .border({ width: 1, color: this.dividerTone(), style: BorderStyle.Dashed })
@@ -587,32 +695,32 @@ struct Index {
         Row() {
           this.icon('search', 16)
           TextInput({ text: this.query, placeholder: this.t('search_books') }).layoutWeight(1).height(36)
-            .fontFamily('HarmonyOS Sans').fontSize(14).fontColor(this.fg()).placeholderColor(this.muted()).backgroundColor(Color.Transparent)
-            .onChange((value: string) => { this.query = value; })
-          if (this.query) { this.iconButton('close', this.t('clear_search'), () => { this.query = ''; }) }
+            .fontFamily(this.appFontFamily).fontSize(14).fontColor(this.fg()).placeholderColor(this.muted()).backgroundColor(Color.Transparent)
+            .onChange((value: string) => { this.query = value; this.updateShelf(); })
+          if (this.query) { this.iconButton('close', this.t('clear_search'), () => { this.query = ''; this.updateShelf(); }) }
         }.layoutWeight(1).height(38).padding({ left: 12, right: 2 }).backgroundColor(this.inset()).borderRadius(24)
         this.iconButton('view', this.t('view_options'), () => { this.viewMenu = !this.viewMenu; })
         this.iconButton('menu', this.t('settings'), () => { this.viewMenu = false; this.openSettings(); })
       }.height(60).width('100%').padding({ left: 16, right: 12 })
       this.rule()
       Row() {
-        Text(this.t('library')).fontFamily('HarmonyOS Sans').fontSize(14).fontWeight(FontWeight.Medium).fontColor(this.fg()).layoutWeight(1)
-        Text(`${this.visibleBooks().length} ${this.t('books')}`).fontFamily('HarmonyOS Sans').fontSize(12).fontColor(this.muted())
+        Text(this.t('library')).fontFamily(this.appFontFamily).fontSize(14).fontWeight(FontWeight.Medium).fontColor(this.fg()).layoutWeight(1)
+        Text(`${this.visibleCount} ${this.t('books')}`).fontFamily(this.appFontFamily).fontSize(12).fontColor(this.muted())
       }.height(48).width('100%').padding({ left: 24, right: 24 })
       if (this.error) { Column() { this.notice() }.padding({ left: 16, right: 16, bottom: 12 }).width('100%') }
       if (this.busy) {
         Row({ space: 10 }) { LoadingProgress().width(20).height(20).color(this.fg())
-          Text(this.t('importing')).fontFamily('HarmonyOS Sans').fontSize(13).fontColor(this.muted()) }.height(44).width('100%').justifyContent(FlexAlign.Center)
+          Text(this.t('importing')).fontFamily(this.appFontFamily).fontSize(13).fontColor(this.muted()) }.height(44).width('100%').justifyContent(FlexAlign.Center)
       }
       if (!this.books.length) {
-        Text(this.t('empty_description')).fontFamily('HarmonyOS Sans').fontSize(14).fontColor(this.muted()).width('100%').padding({ left: 24, right: 24, bottom: 20 })
-      } else if (!this.visibleBooks().length) {
-        Text(this.t('no_results')).fontFamily('HarmonyOS Sans').fontSize(14).fontColor(this.muted()).width('100%').padding({ left: 24, right: 24, bottom: 20 })
+        Text(this.t('empty_description')).fontFamily(this.appFontFamily).fontSize(14).fontColor(this.muted()).width('100%').padding({ left: 24, right: 24, bottom: 20 })
+      } else if (!this.visibleCount) {
+        Text(this.t('no_results')).fontFamily(this.appFontFamily).fontSize(14).fontColor(this.muted()).width('100%').padding({ left: 24, right: 24, bottom: 20 })
       }
       if (this.viewMode === 'grid') {
         Grid() {
-          GridItem() { Column({ space: 8 }) { this.importCover(); Text(this.t('import')).fontFamily('HarmonyOS Sans').fontSize(13).fontColor(this.muted()).width('100%') }.width('100%') }
-          ForEach(this.visibleBooks(), (book: BookRecord) => {
+          GridItem() { Column({ space: 8 }) { this.importCover(); Text(this.t('import')).fontFamily(this.appFontFamily).fontSize(13).fontColor(this.muted()).width('100%') }.width('100%') }
+          LazyForEach(this.shelfSource, (book: ShelfBook) => {
             GridItem() {
               Column({ space: 8 }) {
                 Stack({ alignContent: Alignment.TopEnd }) {
@@ -620,50 +728,50 @@ struct Index {
                   else {
                     Column({ space: 14 }) {
                       this.icon('book', 28)
-                      Text(book.title).fontFamily('HarmonyOS Sans').fontSize(16).fontWeight(FontWeight.Medium).fontColor(this.fg()).textAlign(TextAlign.Center).maxLines(4)
-                      Text(book.author || this.t('unknown_author')).fontFamily('HarmonyOS Sans').fontSize(11).fontColor(this.muted()).textAlign(TextAlign.Center).maxLines(2)
+                      Text(book.title).fontFamily(this.appFontFamily).fontSize(16).fontWeight(FontWeight.Medium).fontColor(this.fg()).textAlign(TextAlign.Center).maxLines(4)
+                      Text(book.author || this.t('unknown_author')).fontFamily(this.appFontFamily).fontSize(11).fontColor(this.muted()).textAlign(TextAlign.Center).maxLines(2)
                     }.padding(14).width('100%').height('100%').justifyContent(FlexAlign.Center).backgroundColor(this.inset())
                   }
                 }.width('100%').aspectRatio(28 / 41).borderRadius(3).clip(true)
                   .shadow({ radius: 4, offsetY: 2, color: '#20000000' }).onClick(() => this.selectBook(book))
                 Row({ space: 4 }) {
-                  Text(book.title).fontFamily('HarmonyOS Sans').fontSize(13).fontColor(this.fg()).layoutWeight(1).maxLines(1).textOverflow({ overflow: TextOverflow.Ellipsis })
+                  Text(book.title).fontFamily(this.appFontFamily).fontSize(13).fontColor(this.fg()).layoutWeight(1).maxLines(1).textOverflow({ overflow: TextOverflow.Ellipsis })
                   Button({ type: ButtonType.Circle }) { this.icon('dots', 16) }.width(24).height(24).padding(4).backgroundColor(Color.Transparent)
                     .accessibilityText(this.t('remove')).onClick(() => { this.confirmRemove = book.id; })
                 }.width('100%')
-                Text(book.author || this.t('unknown_author')).fontFamily('HarmonyOS Sans').fontSize(11).fontColor(this.muted()).maxLines(1).width('100%').textOverflow({ overflow: TextOverflow.Ellipsis })
-                if (!book.path) { Text(this.t('cloud_download')).fontSize(11).fontColor(this.primary()).width('100%') }
+                Text(book.author || this.t('unknown_author')).fontFamily(this.appFontFamily).fontSize(11).fontColor(this.muted()).maxLines(1).width('100%').textOverflow({ overflow: TextOverflow.Ellipsis })
+                if (!book.path) { Text(this.t('cloud_download')).fontFamily(this.appFontFamily).fontSize(11).fontColor(this.primary()).width('100%') }
                 Row({ space: 8 }) {
                   Progress({ value: book.position.percentage * 100, total: 100, type: ProgressType.Linear }).color(this.muted()).backgroundColor(this.inset()).height(2).layoutWeight(1)
-                  Text(`${Math.round(book.position.percentage * 100)}%`).fontFamily('HarmonyOS Sans').fontSize(10).fontColor(this.muted())
+                  Text(`${Math.round(book.position.percentage * 100)}%`).fontFamily(this.appFontFamily).fontSize(10).fontColor(this.muted())
                 }.width('100%')
               }.width('100%').alignItems(HorizontalAlign.Start)
             }
-          }, (book: BookRecord) => `${book.id}:${book.position.revision}:${book.cover}`)
+          }, (book: ShelfBook) => JSON.stringify([book.id, book.title, book.author, book.path, book.cover, book.position.revision, book.position.percentage]))
         }.columnsTemplate(this.columns()).columnsGap(24).rowsGap(28).layoutWeight(1).width('100%').padding({ left: 24, right: 24, bottom: 24 })
       } else {
         List({ space: 0 }) {
           ListItem() {
             Row({ space: 16 }) {
               Column() { this.importCover() }.width(56)
-              Text(this.t('import')).fontFamily('HarmonyOS Sans').fontSize(15).fontColor(this.fg()).layoutWeight(1)
+              Text(this.t('import')).fontFamily(this.appFontFamily).fontSize(15).fontColor(this.fg()).layoutWeight(1)
             }.width('100%').padding({ top: 14, bottom: 14 }).onClick(() => { if (this.initialized && !this.busy) this.run(() => this.app!.importBooks()); })
           }
-          ForEach(this.visibleBooks(), (book: BookRecord) => {
+          LazyForEach(this.shelfSource, (book: ShelfBook) => {
             ListItem() {
               Row({ space: 16 }) {
                 if (book.cover) { Image(`file://${book.cover}`).width(56).height(82).objectFit(ImageFit.Cover).borderRadius(3) }
                 else { Column() { this.icon('book', 24) }.width(56).height(82).justifyContent(FlexAlign.Center).backgroundColor(this.inset()).borderRadius(3) }
                 Column({ space: 6 }) {
-                  Text(book.title).fontFamily('HarmonyOS Sans').fontSize(15).fontColor(this.fg()).maxLines(2).textOverflow({ overflow: TextOverflow.Ellipsis })
-                  Text(book.author || this.t('unknown_author')).fontFamily('HarmonyOS Sans').fontSize(12).fontColor(this.muted()).maxLines(1)
-                  if (!book.path) { Text(this.t('cloud_download')).fontSize(11).fontColor(this.primary()) }
-                  Text(`${Math.round(book.position.percentage * 100)}%`).fontFamily('HarmonyOS Sans').fontSize(11).fontColor(this.muted())
+                  Text(book.title).fontFamily(this.appFontFamily).fontSize(15).fontColor(this.fg()).maxLines(2).textOverflow({ overflow: TextOverflow.Ellipsis })
+                  Text(book.author || this.t('unknown_author')).fontFamily(this.appFontFamily).fontSize(12).fontColor(this.muted()).maxLines(1)
+                  if (!book.path) { Text(this.t('cloud_download')).fontFamily(this.appFontFamily).fontSize(11).fontColor(this.primary()) }
+                  Text(`${Math.round(book.position.percentage * 100)}%`).fontFamily(this.appFontFamily).fontSize(11).fontColor(this.muted())
                 }.alignItems(HorizontalAlign.Start).layoutWeight(1)
                 this.iconButton('dots', this.t('remove'), () => { this.confirmRemove = book.id; })
               }.padding({ top: 14, bottom: 14 }).width('100%').onClick(() => this.selectBook(book))
             }
-          }, (book: BookRecord) => `${book.id}:${book.position.revision}:${book.cover}`)
+          }, (book: ShelfBook) => JSON.stringify([book.id, book.title, book.author, book.path, book.cover, book.position.revision, book.position.percentage]))
         }.divider({ strokeWidth: 0.5, color: this.dividerTone() }).layoutWeight(1).width('100%').padding({ left: 24, right: 24 })
       }
     }.width('100%').height('100%').padding({ top: this.safeTop, bottom: this.safeBottom }).backgroundColor(this.bg()).accessibilityLevel(this.settingsOpen || !!this.confirmRemove ? 'no-hide-descendants' : 'auto')
@@ -673,8 +781,8 @@ struct Index {
   @Builder
   syncInfoRow(label: string, value: string) {
     Row({ space: 12 }) {
-      Text(label).fontFamily('HarmonyOS Sans').fontSize(14).fontColor(this.fg()).layoutWeight(1)
-      Text(value).fontFamily('HarmonyOS Sans').fontSize(13).fontColor(this.muted()).width('60%').textAlign(TextAlign.End).maxLines(2).textOverflow({ overflow: TextOverflow.Ellipsis })
+      Text(label).fontFamily(this.appFontFamily).fontSize(14).fontColor(this.fg()).layoutWeight(1)
+      Text(value).fontFamily(this.appFontFamily).fontSize(13).fontColor(this.muted()).width('60%').textAlign(TextAlign.End).maxLines(2).textOverflow({ overflow: TextOverflow.Ellipsis })
     }.constraintSize({ minHeight: 56 }).width('100%').padding({ left: 16, right: 16, top: 12, bottom: 12 })
   }
 
@@ -683,7 +791,7 @@ struct Index {
     Column() {
       if (this.syncConfigured) {
         Row({ space: 12 }) {
-          Text(this.t('auto_sync')).fontFamily('HarmonyOS Sans').fontSize(14).fontColor(this.fg()).layoutWeight(1)
+          Text(this.t('auto_sync')).fontFamily(this.appFontFamily).fontSize(14).fontColor(this.fg()).layoutWeight(1)
           Toggle({ type: ToggleType.Switch, isOn: this.syncEnabled }).selectedColor(this.primary()).enabled(!this.savingSyncOptions)
             .onChange((value: boolean) => { this.saveSyncOptions(value); })
         }.height(56).width('100%').padding({ left: 16, right: 16 })
@@ -695,43 +803,43 @@ struct Index {
         this.syncInfoRow(this.t('checksum_method'), this.t('file_content'))
         this.rule()
         Row({ space: 12 }) {
-          Text(this.t('device_name')).fontFamily('HarmonyOS Sans').fontSize(14).fontColor(this.fg()).layoutWeight(1)
-          TextInput({ text: this.deviceName }).width('60%').height(36).textAlign(TextAlign.End).fontFamily('HarmonyOS Sans').fontSize(13)
+          Text(this.t('device_name')).fontFamily(this.appFontFamily).fontSize(14).fontColor(this.fg()).layoutWeight(1)
+          TextInput({ text: this.deviceName }).width('60%').height(36).textAlign(TextAlign.End).fontFamily(this.appFontFamily).fontSize(13)
             .fontColor(this.fg()).backgroundColor(Color.Transparent).enabled(!this.savingSyncOptions)
             .onChange((value: string) => { this.deviceName = value; })
             .onEditChange((editing: boolean) => { if (!editing && !this.savingSyncOptions) this.saveSyncOptions(this.syncEnabled); })
         }.height(56).width('100%').padding({ left: 16, right: 16 })
         this.rule()
         Column({ space: 12 }) {
-          Text(this.t('kosync_description')).fontFamily('HarmonyOS Sans').fontSize(12).fontColor(this.muted()).width('100%')
+          Text(this.t('kosync_description')).fontFamily(this.appFontFamily).fontSize(12).fontColor(this.muted()).width('100%')
           Row({ space: 12 }) {
-            Text(`${this.t('sync_status')}: ${this.t(`status_${this.status}`)}`).fontFamily('HarmonyOS Sans').fontSize(12).fontColor(this.muted()).layoutWeight(1)
-            Button(this.t('disconnect')).height(40).fontFamily('HarmonyOS Sans').fontSize(13).fontColor(this.activeDark() ? '#ff9393' : '#913d35')
+            Text(`${this.t('sync_status')}: ${this.t(`status_${this.status}`)}`).fontFamily(this.appFontFamily).fontSize(12).fontColor(this.muted()).layoutWeight(1)
+            Button(this.t('disconnect')).height(40).fontFamily(this.appFontFamily).fontSize(13).fontColor(this.activeDark() ? '#ff9393' : '#913d35')
               .backgroundColor(Color.Transparent).borderRadius(8).enabled(!this.savingSyncOptions).onClick(() => this.disconnectSync())
           }.width('100%')
         }.padding(16).width('100%')
       } else {
         Column({ space: 16 }) {
-          Text(this.t('kosync_connect_description')).fontFamily('HarmonyOS Sans').fontSize(13).fontColor(this.muted()).width('100%')
+          Text(this.t('kosync_connect_description')).fontFamily(this.appFontFamily).fontSize(13).fontColor(this.muted()).width('100%')
           Column({ space: 8 }) {
-            Text(this.t('server_url')).fontFamily('HarmonyOS Sans').fontSize(12).fontColor(this.muted()).width('100%')
-            TextInput({ text: this.server, placeholder: 'https://sync.koreader.rocks' }).fontFamily('HarmonyOS Sans').fontSize(14).fontColor(this.fg())
+            Text(this.t('server_url')).fontFamily(this.appFontFamily).fontSize(12).fontColor(this.muted()).width('100%')
+            TextInput({ text: this.server, placeholder: 'https://sync.koreader.rocks' }).fontFamily(this.appFontFamily).fontSize(14).fontColor(this.fg())
               .backgroundColor(this.inset()).borderRadius(8).enabled(!this.connecting).onChange((value: string) => { this.server = value; })
           }.width('100%')
           Column({ space: 8 }) {
-            Text(this.t('username')).fontFamily('HarmonyOS Sans').fontSize(12).fontColor(this.muted()).width('100%')
-            TextInput({ text: this.username, placeholder: this.t('username') }).fontFamily('HarmonyOS Sans').fontSize(14).fontColor(this.fg())
+            Text(this.t('username')).fontFamily(this.appFontFamily).fontSize(12).fontColor(this.muted()).width('100%')
+            TextInput({ text: this.username, placeholder: this.t('username') }).fontFamily(this.appFontFamily).fontSize(14).fontColor(this.fg())
               .backgroundColor(this.inset()).borderRadius(8).enabled(!this.connecting).onChange((value: string) => { this.username = value; })
           }.width('100%')
           Column({ space: 8 }) {
-            Text(this.t('password')).fontFamily('HarmonyOS Sans').fontSize(12).fontColor(this.muted()).width('100%')
-            TextInput({ text: this.password, placeholder: this.t('password') }).type(InputType.Password).fontFamily('HarmonyOS Sans').fontSize(14)
+            Text(this.t('password')).fontFamily(this.appFontFamily).fontSize(12).fontColor(this.muted()).width('100%')
+            TextInput({ text: this.password, placeholder: this.t('password') }).type(InputType.Password).fontFamily(this.appFontFamily).fontSize(14)
               .fontColor(this.fg()).backgroundColor(this.inset()).borderRadius(8).enabled(!this.connecting).onChange((value: string) => { this.password = value; })
           }.width('100%')
           Row() {
             Blank()
             if (this.connecting) { LoadingProgress().width(24).height(24).color(this.primary()).margin({ right: 12 }) }
-            Button(this.t('connect_save')).height(40).fontFamily('HarmonyOS Sans').fontSize(14).backgroundColor(this.primary()).fontColor(this.primaryText()).borderRadius(8)
+            Button(this.t('connect_save')).height(40).fontFamily(this.appFontFamily).fontSize(14).backgroundColor(this.primary()).fontColor(this.primaryText()).borderRadius(8)
               .enabled(!this.connecting && !!this.server.trim() && !!this.username.trim() && !!this.password).onClick(() => this.connect())
           }.width('100%')
         }.padding(16).width('100%')
@@ -744,7 +852,7 @@ struct Index {
     Column() {
       if (this.replicaConnected) {
         Row() {
-          Text(this.t('enable_replica_sync')).fontSize(14).fontColor(this.fg()).layoutWeight(1)
+          Text(this.t('enable_replica_sync')).fontFamily(this.appFontFamily).fontSize(14).fontColor(this.fg()).layoutWeight(1)
           Toggle({ type: ToggleType.Switch, isOn: this.replicaEnabled }).selectedColor(this.primary()).enabled(!this.replicaConnecting)
             .onChange((value: boolean) => this.saveReplicaOptions(value, this.replicaFonts))
         }.width('100%').height(56).padding({ left: 16, right: 16 })
@@ -755,8 +863,8 @@ struct Index {
         this.rule()
         Row() {
           Column({ space: 4 }) {
-            Text(this.t('fonts')).fontSize(14).fontColor(this.fg())
-            Text(this.t('replica_fonts_description')).fontSize(12).fontColor(this.muted())
+            Text(this.t('fonts')).fontFamily(this.appFontFamily).fontSize(14).fontColor(this.fg())
+            Text(this.t('replica_fonts_description')).fontFamily(this.appFontFamily).fontSize(12).fontColor(this.muted())
           }.layoutWeight(1).alignItems(HorizontalAlign.Start)
           Toggle({ type: ToggleType.Switch, isOn: this.replicaFonts }).selectedColor(this.primary()).enabled(!this.replicaConnecting)
             .onChange((value: boolean) => this.saveReplicaOptions(this.replicaEnabled, value))
@@ -766,28 +874,28 @@ struct Index {
         this.rule()
         Column({ space: 10 }) {
           Row() {
-            Text(this.t('cloud_storage')).fontSize(14).fontColor(this.fg()).layoutWeight(1)
-            Button(this.t('refresh_storage')).fontSize(12).fontColor(this.primary()).backgroundColor(Color.Transparent)
+            Text(this.t('cloud_storage')).fontFamily(this.appFontFamily).fontSize(14).fontColor(this.fg()).layoutWeight(1)
+            Button(this.t('refresh_storage')).fontFamily(this.appFontFamily).fontSize(12).fontColor(this.primary()).backgroundColor(Color.Transparent)
               .enabled(!this.storageBusy && !this.replicaConnecting).onClick(() => this.run(() => this.app!.replica.refreshStorage()))
           }.width('100%')
           if (this.storageUsage) {
-            Text(this.storageUsage).fontSize(14).fontColor(this.fg()).width('100%')
+            Text(this.storageUsage).fontFamily(this.appFontFamily).fontSize(14).fontColor(this.fg()).width('100%')
             Progress({ value: this.storagePercent, total: 100, type: ProgressType.Linear }).color(this.primary()).width('100%')
-            Text(`${this.t('available_storage')}: ${this.storageAvailable} · ${this.storageFiles} ${this.t('storage_files')}`).fontSize(12).fontColor(this.muted()).width('100%')
-          } else { Text(this.t(this.storageBusy ? 'storage_loading' : 'storage_unavailable')).fontSize(12).fontColor(this.muted()).width('100%') }
-          if (this.storageError) { Text(this.localizedError(this.storageError)).fontSize(12).fontColor(this.activeDark() ? '#ff9393' : '#913d35').width('100%') }
+            Text(`${this.t('available_storage')}: ${this.storageAvailable} · ${this.storageFiles} ${this.t('storage_files')}`).fontFamily(this.appFontFamily).fontSize(12).fontColor(this.muted()).width('100%')
+          } else { Text(this.t(this.storageBusy ? 'storage_loading' : 'storage_unavailable')).fontFamily(this.appFontFamily).fontSize(12).fontColor(this.muted()).width('100%') }
+          if (this.storageError) { Text(this.localizedError(this.storageError)).fontFamily(this.appFontFamily).fontSize(12).fontColor(this.activeDark() ? '#ff9393' : '#913d35').width('100%') }
         }.padding(16).width('100%')
         this.rule()
         Column({ space: 8 }) {
-          Text(this.t('replica_description')).fontSize(12).fontColor(this.muted()).width('100%')
-          Text(this.t(`replica_status_${this.replicaStatus}`)).fontSize(12).fontColor(this.muted()).width('100%')
-          if (this.pendingCloudProgress > 0) { Text(this.t('cloud_progress_pending').replace('{count}', `${this.pendingCloudProgress}`)).fontSize(12).fontColor(this.muted()).width('100%') }
+          Text(this.t('replica_description')).fontFamily(this.appFontFamily).fontSize(12).fontColor(this.muted()).width('100%')
+          Text(this.t(`replica_status_${this.replicaStatus}`)).fontFamily(this.appFontFamily).fontSize(12).fontColor(this.muted()).width('100%')
+          if (this.pendingCloudProgress > 0) { Text(this.t('cloud_progress_pending').replace('{count}', `${this.pendingCloudProgress}`)).fontFamily(this.appFontFamily).fontSize(12).fontColor(this.muted()).width('100%') }
           Row({ space: 8 }) {
-            Button(this.t('sync_replica_now')).height(40).fontSize(13).fontColor(this.primaryText()).backgroundColor(this.primary()).borderRadius(8)
+            Button(this.t('sync_replica_now')).height(40).fontFamily(this.appFontFamily).fontSize(13).fontColor(this.primaryText()).backgroundColor(this.primary()).borderRadius(8)
               .enabled(this.replicaEnabled && !this.replicaBusy && !this.replicaConnecting)
               .onClick(() => this.run(() => this.app!.replica.sync()))
             Blank()
-            Button(this.t('disconnect')).height(40).fontSize(13).fontColor(this.activeDark() ? '#ff9393' : '#913d35')
+            Button(this.t('disconnect')).height(40).fontFamily(this.appFontFamily).fontSize(13).fontColor(this.activeDark() ? '#ff9393' : '#913d35')
               .backgroundColor(Color.Transparent).borderRadius(8).enabled(!this.replicaConnecting)
               .onClick(() => {
                 this.replicaConnecting = true;
@@ -798,17 +906,17 @@ struct Index {
         }.padding(16).width('100%')
       } else {
         Column({ space: 12 }) {
-          Text(this.t('replica_connect_description')).fontSize(13).fontColor(this.muted()).width('100%')
-          TextInput({ text: this.replicaEmail, placeholder: this.t('email') }).type(InputType.Email).fontSize(14).fontColor(this.fg())
+          Text(this.t('replica_connect_description')).fontFamily(this.appFontFamily).fontSize(13).fontColor(this.muted()).width('100%')
+          TextInput({ text: this.replicaEmail, placeholder: this.t('email') }).type(InputType.Email).fontFamily(this.appFontFamily).fontSize(14).fontColor(this.fg())
             .backgroundColor(this.inset()).borderRadius(8).enabled(!this.replicaConnecting).onChange((value: string) => { this.replicaEmail = value; })
-          TextInput({ text: this.replicaPassword, placeholder: this.t('password') }).type(InputType.Password).fontSize(14).fontColor(this.fg())
+          TextInput({ text: this.replicaPassword, placeholder: this.t('password') }).type(InputType.Password).fontFamily(this.appFontFamily).fontSize(14).fontColor(this.fg())
             .backgroundColor(this.inset()).borderRadius(8).enabled(!this.replicaConnecting).onChange((value: string) => { this.replicaPassword = value; })
-          Button(this.t(this.replicaConnecting ? 'connecting' : 'sign_in')).height(40).fontSize(14).backgroundColor(this.primary()).fontColor(this.primaryText()).borderRadius(8)
+          Button(this.t(this.replicaConnecting ? 'connecting' : 'sign_in')).height(40).fontFamily(this.appFontFamily).fontSize(14).backgroundColor(this.primary()).fontColor(this.primaryText()).borderRadius(8)
             .enabled(!this.replicaConnecting && !!this.replicaEmail.trim() && !!this.replicaPassword).onClick(() => this.connectReplica())
         }.padding(16).width('100%')
       }
       if (this.replicaError) {
-        Text(this.localizedError(this.replicaError)).fontSize(12).fontColor(this.activeDark() ? '#ff9393' : '#913d35')
+        Text(this.localizedError(this.replicaError)).fontFamily(this.appFontFamily).fontSize(12).fontColor(this.activeDark() ? '#ff9393' : '#913d35')
           .width('100%').padding({ left: 16, right: 16, bottom: 16 })
       }
     }.width('100%')
@@ -824,8 +932,8 @@ struct Index {
             else { this.icon(icon, 20) }
           }.width(36).height(36).backgroundColor(this.inset()).borderRadius(18)
           Column({ space: 4 }) {
-            Text(title).fontFamily('HarmonyOS Sans').fontSize(14).fontWeight(FontWeight.Medium).fontColor(this.fg()).width('100%')
-            Text(summary).fontFamily('HarmonyOS Sans').fontSize(12).fontColor(this.muted()).width('100%').maxLines(2).textOverflow({ overflow: TextOverflow.Ellipsis })
+            Text(title).fontFamily(this.appFontFamily).fontSize(14).fontWeight(FontWeight.Medium).fontColor(this.fg()).width('100%')
+            Text(summary).fontFamily(this.appFontFamily).fontSize(12).fontColor(this.muted()).width('100%').maxLines(2).textOverflow({ overflow: TextOverflow.Ellipsis })
           }.layoutWeight(1).alignItems(HorizontalAlign.Start)
           Stack() { this.icon('back', 18) }.width(20).height(20).rotate({ angle: this.expandedSyncServices.includes(id) ? -90 : 180 })
         }.width('100%').padding({ left: 16, right: 16, top: 12, bottom: 12 }).constraintSize({ minHeight: 72 })
@@ -852,7 +960,7 @@ struct Index {
     Column() {
       Row() {
         Row().width(40)
-        Text(this.t('settings')).fontFamily('HarmonyOS Sans').fontSize(16).fontWeight(FontWeight.Medium).fontColor(this.fg()).layoutWeight(1).textAlign(TextAlign.Center)
+        Text(this.t('settings')).fontFamily(this.appFontFamily).fontSize(16).fontWeight(FontWeight.Medium).fontColor(this.fg()).layoutWeight(1).textAlign(TextAlign.Center)
         this.iconButton('close', this.t('dismiss'), () => { this.settingsOpen = false; })
       }.width('100%').height(56).padding({ left: 12, right: 12 })
       Row({ space: 4 }) {
@@ -860,7 +968,7 @@ struct Index {
           Button({ type: ButtonType.Normal }) {
             Row({ space: 6 }) {
               this.icon(tab, 18)
-              if (this.shelfWidth > 500 || this.settingsTab === tab) { Text(this.t(tab)).fontFamily('HarmonyOS Sans').fontSize(12).fontColor(this.fg()) }
+              if (this.shelfWidth > 500 || this.settingsTab === tab) { Text(this.t(tab)).fontFamily(this.appFontFamily).fontSize(12).fontColor(this.fg()) }
             }.padding({ left: 10, right: 10 })
           }.height(36).borderRadius(8).backgroundColor(this.settingsTab === tab ? this.inset() : Color.Transparent)
             .accessibilityText(this.t(tab)).onClick(() => { this.settingsTab = tab; })
@@ -871,11 +979,12 @@ struct Index {
         Column() {
           this.notice()
           if (this.settingsTab === 'font_layout') {
+            this.languageControls()
             this.sectionTitle(this.t('preview'))
             Column({ space: 16 }) {
-              Text('Aa').fontSize(42).fontFamily(this.typography.defaultFont === 'serif' ? this.typography.serifFont : this.typography.sansSerifFont).fontWeight(this.typography.fontWeight).fontColor(this.fg())
-              Text(this.t('preview_text')).fontSize(Math.min(36, this.fontSize)).lineHeight(Math.min(36, this.fontSize) * this.lineHeight)
-                .fontFamily(this.typography.defaultFont === 'serif' ? this.typography.serifFont : this.typography.sansSerifFont)
+              Text('Aa').fontSize(42).fontFamily(this.fontFamily(preferredFont(this.typography))).fontWeight(this.typography.fontWeight).fontColor(this.fg())
+              Text(this.t('preview_text')).fontFamily(this.appFontFamily).fontSize(Math.min(36, this.fontSize)).lineHeight(Math.min(36, this.fontSize) * this.lineHeight)
+                .fontFamily(this.appFontFamily)
                 .fontWeight(this.typography.fontWeight).fontColor(this.fg()).textAlign(TextAlign.Center)
             }.padding(28).width('100%').backgroundColor(this.surface()).borderRadius(12).border({ width: 1, color: this.dividerTone() })
             this.sectionTitle(this.t('font_layout'))
@@ -889,10 +998,10 @@ struct Index {
             this.sectionTitle(this.t('about'))
             Column({ space: 12 }) {
               Image($r('app.media.startIcon')).width(48).height(48).objectFit(ImageFit.Contain)
-              Text('Readest').fontFamily('HarmonyOS Sans').fontSize(20).fontWeight(FontWeight.Medium).fontColor(this.fg())
-              Text(this.t('about_description')).fontFamily('HarmonyOS Sans').fontSize(13).fontColor(this.muted()).textAlign(TextAlign.Center)
-              Text(this.t('about_version')).fontFamily('HarmonyOS Sans').fontSize(12).fontColor(this.muted())
-              Text(this.t('about_license')).fontFamily('HarmonyOS Sans').fontSize(11).fontColor(this.muted())
+              Text('Readest').fontFamily(this.appFontFamily).fontSize(20).fontWeight(FontWeight.Medium).fontColor(this.fg())
+              Text(this.t('about_description')).fontFamily(this.appFontFamily).fontSize(13).fontColor(this.muted()).textAlign(TextAlign.Center)
+              Text(this.t('about_version')).fontFamily(this.appFontFamily).fontSize(12).fontColor(this.muted())
+              Text(this.t('about_license')).fontFamily(this.appFontFamily).fontSize(11).fontColor(this.muted())
             }.padding(28).width('100%').backgroundColor(this.surface()).borderRadius(12).border({ width: 1, color: this.dividerTone() })
           }
         }.width('100%').constraintSize({ maxWidth: 640 }).padding({ left: 20, right: 20, bottom: 32 })
@@ -906,9 +1015,9 @@ struct Index {
   syncSource(source: string, chapter: string, percentage: number, primary: boolean, action: () => void) {
     Button({ type: ButtonType.Normal }) {
       Column({ space: 4 }) {
-        Text(source).fontFamily('HarmonyOS Sans').fontSize(12).fontWeight(FontWeight.Medium)
+        Text(source).fontFamily(this.appFontFamily).fontSize(12).fontWeight(FontWeight.Medium)
           .fontColor(primary ? this.primaryText() : this.muted()).opacity(primary ? 0.75 : 1).width('100%').maxLines(2).textOverflow({ overflow: TextOverflow.Ellipsis })
-        Text(`${chapter || this.t('reading')} · ${percentage.toFixed(1)}%`).fontFamily('HarmonyOS Sans').fontSize(14).fontWeight(FontWeight.Medium)
+        Text(`${chapter || this.t('reading')} · ${percentage.toFixed(1)}%`).fontFamily(this.appFontFamily).fontSize(14).fontWeight(FontWeight.Medium)
           .fontColor(primary ? this.primaryText() : this.fg()).width('100%').maxLines(2).textOverflow({ overflow: TextOverflow.Ellipsis })
       }.width('100%').alignItems(HorizontalAlign.Start).padding({ left: 16, right: 16, top: 14, bottom: 14 })
     }.width('100%').padding(0).borderRadius(12).backgroundColor(primary ? this.primary() : this.surface())
@@ -932,8 +1041,8 @@ struct Index {
         if (this.conflict) {
           Column().width('100%').height('100%').backgroundColor('#80000000')
           Column({ space: 10 }) {
-            Text(this.t('conflict_title')).fontFamily('HarmonyOS Sans').fontSize(16).fontWeight(FontWeight.Bold).fontColor(this.fg()).width('100%').textAlign(TextAlign.Center).margin({ bottom: 8 })
-            Text(this.t('conflict_description')).fontFamily('HarmonyOS Sans').fontSize(14).fontColor(this.muted()).textAlign(TextAlign.Center).width('100%').margin({ bottom: 10 })
+            Text(this.t('conflict_title')).fontFamily(this.appFontFamily).fontSize(16).fontWeight(FontWeight.Bold).fontColor(this.fg()).width('100%').textAlign(TextAlign.Center).margin({ bottom: 8 })
+            Text(this.t('conflict_description')).fontFamily(this.appFontFamily).fontSize(14).fontColor(this.muted()).textAlign(TextAlign.Center).width('100%').margin({ bottom: 10 })
             this.syncSource(this.t('local'), this.chapter, this.progress, false, () => { this.run(() => this.app!.sync('keep-local')); })
             this.syncSource(this.remoteDevice, this.remoteChapter, this.remotePercent, true, () => { this.run(() => this.app!.sync('use-remote')); })
           }.padding(24).width('92%').constraintSize({ maxWidth: 560 }).backgroundColor(this.bg()).borderRadius(16).shadow({ radius: 24, color: '#33000000' })
@@ -941,13 +1050,13 @@ struct Index {
       }
       if (this.viewMenu && !this.reading) {
         Column({ space: 4 }) {
-          Text(this.t('view_options')).fontFamily('HarmonyOS Sans').fontSize(12).fontColor(this.muted()).width('100%').padding({ left: 12, top: 8, bottom: 8 })
+          Text(this.t('view_options')).fontFamily(this.appFontFamily).fontSize(12).fontColor(this.muted()).width('100%').padding({ left: 12, top: 8, bottom: 8 })
           ForEach(['grid', 'list'], (mode: string) => {
             Button({ type: ButtonType.Normal }) {
               Row({ space: 12 }) {
                 this.icon(mode, 18)
-                Text(this.t(`view_${mode}`)).fontFamily('HarmonyOS Sans').fontSize(14).fontColor(this.fg()).layoutWeight(1)
-                if (this.viewMode === mode) { Text('✓').fontFamily('HarmonyOS Sans').fontSize(14).fontColor(this.fg()) }
+                Text(this.t(`view_${mode}`)).fontFamily(this.appFontFamily).fontSize(14).fontColor(this.fg()).layoutWeight(1)
+                if (this.viewMode === mode) { Text('✓').fontFamily(this.appFontFamily).fontSize(14).fontColor(this.fg()) }
               }.width('100%').padding(12)
             }.width('100%').height(44).backgroundColor(this.viewMode === mode ? this.inset() : Color.Transparent).borderRadius(8)
               .onClick(() => { this.viewMode = mode; this.viewMenu = false; })
@@ -956,11 +1065,11 @@ struct Index {
           ForEach(['recent', 'title'], (sort: string) => {
             Button({ type: ButtonType.Normal }) {
               Row() {
-                Text(this.t(`sort_${sort}`)).fontFamily('HarmonyOS Sans').fontSize(14).fontColor(this.fg()).layoutWeight(1)
-                if (this.sortBy === sort) { Text('✓').fontFamily('HarmonyOS Sans').fontSize(14).fontColor(this.fg()) }
+                Text(this.t(`sort_${sort}`)).fontFamily(this.appFontFamily).fontSize(14).fontColor(this.fg()).layoutWeight(1)
+                if (this.sortBy === sort) { Text('✓').fontFamily(this.appFontFamily).fontSize(14).fontColor(this.fg()) }
               }.width('100%').padding(12)
             }.width('100%').height(44).backgroundColor(this.sortBy === sort ? this.inset() : Color.Transparent).borderRadius(8)
-              .onClick(() => { this.sortBy = sort; this.viewMenu = false; })
+              .onClick(() => { this.sortBy = sort; this.updateShelf(); this.viewMenu = false; })
           })
         }.width(220).padding(8).backgroundColor(this.surface()).borderRadius(12).border({ width: 1, color: this.dividerTone() })
           .shadow({ radius: 12, color: '#20000000' }).align(Alignment.TopEnd).margin({ top: 56 + this.safeTop, right: 16 })
@@ -969,10 +1078,14 @@ struct Index {
         Column().width('100%').height('100%').backgroundColor('#80000000').onClick(() => { this.settingsOpen = false; })
         this.settingsPage()
       }
+      if (this.fontPicker) {
+        Column().width('100%').height('100%').backgroundColor('#80000000').onClick(() => { this.fontPicker = ''; })
+        this.fontPickerPage()
+      }
       if (this.confirmFontRemove) {
         Column().width('100%').height('100%').backgroundColor('#80000000').onClick(() => { this.confirmFontRemove = ''; })
         Column({ space: 18 }) {
-          Text(this.t('remove_font_description')).fontSize(16).fontColor(this.fg())
+          Text(this.t('remove_font_description')).fontFamily(this.appFontFamily).fontSize(16).fontColor(this.fg())
           Row({ space: 12 }) {
             Button(this.t('cancel')).onClick(() => { this.confirmFontRemove = ''; })
             Button(this.t('remove')).backgroundColor('#913d35').fontColor('#ffffff').onClick(() => {
@@ -984,7 +1097,7 @@ struct Index {
       if (this.confirmRemove) {
         Column().width('100%').height('100%').backgroundColor('#80000000').onClick(() => { this.confirmRemove = ''; })
         Column({ space: 18 }) {
-          Text(this.t('remove_description')).fontFamily('HarmonyOS Sans').fontSize(17).fontColor(this.fg())
+          Text(this.t('remove_description')).fontFamily(this.appFontFamily).fontSize(17).fontColor(this.fg())
           Row({ space: 12 }) { Button(this.t('cancel')).onClick(() => { this.confirmRemove = ''; })
             Button(this.t('remove')).backgroundColor('#913d35').onClick(() => { const book = this.app!.books.find((item: BookRecord) => item.id === this.confirmRemove);
               if (book) this.run(() => this.app!.remove(book)); this.confirmRemove = ''; }) }
@@ -993,14 +1106,14 @@ struct Index {
               const book = this.app!.books.find((item: BookRecord) => item.id === this.confirmRemove);
               if (book) this.run(() => this.app!.removeCloud(book)); this.confirmRemove = '';
             })
-            Text(this.t('remove_cloud_description')).fontSize(12).fontColor(this.muted())
+            Text(this.t('remove_cloud_description')).fontFamily(this.appFontFamily).fontSize(12).fontColor(this.muted())
           }
         }.padding(24).width('90%').constraintSize({ maxWidth: 480 }).backgroundColor(this.bg()).borderRadius(16)
       }
       if (this.busy && this.reading) {
         Column({ space: 12 }) {
           LoadingProgress().width(32).height(32).color(this.fg())
-          Text(this.t('opening')).fontFamily('HarmonyOS Sans').fontSize(13).fontColor(this.muted())
+          Text(this.t('opening')).fontFamily(this.appFontFamily).fontSize(13).fontColor(this.muted())
         }.padding(24).backgroundColor(this.surface()).borderRadius(12)
       }
     }.width(LayoutPolicy.matchParent).height(LayoutPolicy.matchParent).backgroundColor(this.bg()).ignoreLayoutSafeArea()

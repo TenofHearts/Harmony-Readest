@@ -1,5 +1,35 @@
 # Validation
 
+## Reader system font rendering fix (2026-10-09)
+
+- The native font chooser previously advertised system fonts while the reader received only imported font resources. System faces now have native binary resources in the reader catalog, without adding them to imported-font persistence or cloud replicas. Custom imports take precedence for a matching family name.
+- Generic Serif, Sans-serif and Monospace choices use explicit bundled font files in both ArkUI and ArkWeb when available. This tablet enumerates theme fonts only, so readable bundled files are also checked. Reader descendants inherit the selected family under the book-font override. Native app text and reader controls also honor the CJK preference. Font-dependent controls update immediately while font loading finishes.
+- All **87 Node tests** pass. Edge checks pass **707 locator oracle words** with no console errors; new checks verify actual loaded FontFace entries for the generic font aliases and the resulting chapter family. Native fixtures cover system-font binary responses, unknown identifiers, family collisions, and bundled fonts absent from the enumerated list.
+- The final signed update was installed on the physical tablet. The existing Chinese EPUB visibly changed to 仿宋 after selecting its system face, and generic Sans-serif rendered with distinct bundled sans glyphs after clearing the CJK override. Generic Serif was restored and checked across reopening. No app data was cleared.
+- Evidence: `output/font-system-{tests,browser,build}.log`, `output/device/font-system-reader-fangsong.jpeg`, `font-final-sans.jpeg`, `font-final-serif.jpeg` and `font-final-reopened.jpeg`.
+
+## Consecutive language selection responsiveness (2026-10-09)
+
+- Language selection now publishes the new choice and updates application resources before preference I/O. It uses one native language setter; the repository restores the choice at launch. Preference writes run in order without delaying a subsequent selection. Synchronous language callbacks and unchanged color-mode callbacks no longer cause redundant refreshes or reader theme commands.
+- All **83 Node tests** pass and the production signed HAP compiles. New fixtures stall the first preference write while selecting a second language, verify immediate resources and exactly one refresh per selection, verify ordered writes and duplicate-selection suppression, and exercise recovery after persistence/native failures.
+- The signed update was installed in place on the tablet. Eight consecutive English/Chinese selections were checked immediately after each tap, without a settling sleep; both the displayed selection and settings translations changed. English also survived a cold start. The original Follow system choice was restored, with no new app crash/freeze records. These functional checks are not frame-time measurements.
+- Evidence: `output/language-responsive-{tests,build}.log` and `output/device/language-responsive-*.json`.
+
+## Startup language callback crash fix (2026-10-09)
+
+- The tablet's 11:06:25 `jscrash` report identifies `RangeError: Stack overflow!` in a loop between `AppController.applyLanguage`, `ApplicationContext.setLanguage`, `EntryAbility.onConfigurationUpdate` and `AppController.onLanguageChanged`. HarmonyOS synchronously delivered the configuration callback before the language guard had been assigned.
+- Assign the guard before invoking the native API and restore its previous value if the API throws. A regression fixture reproduces synchronous configuration callbacks; it failed with `RECURSIVE_LANGUAGE_CHANGE` before the fix. The fixture also verifies subsequent System-language changes, explicit language selection, and retry after a native failure. All **81 Node tests** pass, and the production signed HAP compiles.
+- The corrected build was installed in place on the physical tablet. Three verified cold starts show the Readest shelf and a live app process; opening settings shows the language selector. The fault log contains no new Readest crash records. The shelf screenshot retains the existing book and 76% progress. No app data was cleared. Native language selections were not changed during this startup verification.
+- Evidence: `output/device/startup-language-crash.txt`, `startup-fixed-results.json`, `startup-fixed-launch-{1,2,3}.json`, `startup-fixed-settings.json` and `startup-fixed-shelf.jpeg`. Node/build logs are `output/startup-fix-{tests,build}.log`.
+
+## Settings persistence, app fonts, language and responsiveness (2026-10-09)
+
+- All **79 Node tests** pass. Added regressions cover shelf-selected theme/font defaults against an existing book style, repeat opening, reader-ready callbacks without preference writes, appearance sent with the new reader session, persisted language selection and System language changes, concurrent/cancelled/failed pickers, and returning to the shelf while an upload remains stalled. Closed-book uploads require prior reconciliation, preserve newer revisions and ignore responses after account changes.
+- Edge browser checks pass all **707 locator oracle words** without console errors. New checks reopen the reader with native dark/Nord/custom-font settings, verify the real font in book text, reader controls and font items, and verify consecutive page turns reuse a canonical chapter document. Existing publisher-layout, safe-area, animation, typography and security checks also pass.
+- Shelf snapshots exclude EPUB metadata, TOCs, cloud records and full book styles. Grid/list books use `LazyForEach`; filtering/sorting run when shelf data or search/sort changes. Reader updates reuse cached translations/appearance and omit unchanged chrome commands. Locator conversion retains at most two parsed chapter documents, and closing clears those documents and minimum-font overrides.
+- App language, theme and preferred font families stay separate from per-book layout. English, Simplified Chinese and System are available in settings. Selecting a font enables the publisher-font override; native font choices preview their own families, and the selected family also styles the shelf, settings and reader controls.
+- Device runtime validation and timing measurements have not been performed for this change. Check shelf/reader settings across restart, native custom-font previews and app text, language changes in both pages, latest-position persistence after immediate close, and file-picker opening/cancellation/retry on the target device. Improvements to the system file manager's own launch time are not established by these automated checks.
+
 ## Verified on this workspace
 
 - Production ArkTS/HAP build passes with the installed HarmonyOS 6.1.1/API 24 SDK. The local development profile now produces both signed and unsigned HAPs.

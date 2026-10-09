@@ -41,6 +41,14 @@
       "value": "书架还是空的"
     },
     {
+      "name": "app_language",
+      "value": "应用语言"
+    },
+    {
+      "name": "language_system",
+      "value": "跟随系统"
+    },
+    {
       "name": "empty_description",
       "value": "从设备添加书籍，即可开始阅读。无需网络连接。"
     },
@@ -238,7 +246,7 @@
     },
     {
       "name": "about_version",
-      "value": "版本 0.0.5 · HarmonyOS"
+      "value": "版本 0.0.6 · HarmonyOS"
     },
     {
       "name": "about_license",

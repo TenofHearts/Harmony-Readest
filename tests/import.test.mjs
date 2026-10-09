@@ -20,6 +20,8 @@ const result = await build({
       export const hilog = { error() {} }; export const connection = {};
       export const preferences = {}; export const cryptoFramework = {}; export const util = {}; export const font = {}; export const http = {};
       export const ConfigurationConstant = { ColorMode: { COLOR_MODE_DARK: 0, COLOR_MODE_LIGHT: 1 } };
+      export const i18n = { System: { getSystemLanguage: () => globalThis.importFixture.systemLanguage || 'en',
+        setAppPreferredLanguage: language => { globalThis.importFixture.preferredLanguage = language; } } };
     ` }));
     b.onResolve({ filter: /\/(Repository|CredentialVault|NativeTransport|ReaderGateway)$/ }, args => ({
       path: args.path.split('/').pop(), namespace: 'service'
@@ -32,6 +34,12 @@ const result = await build({
         async save(book) { globalThis.importFixture.saved.push(book.id); }
         async saveSettings(settings) { globalThis.importFixture.settings = structuredClone(settings); }
         async saveLibrarySettings(settings) { globalThis.importFixture.librarySettings = structuredClone(settings); }
+        async saveLanguage(language) {
+          const f = globalThis.importFixture;
+          f.languageWrites = [...(f.languageWrites || []), language];
+          await f.saveLanguage?.(language);
+          f.language = language;
+        }
       }`,
       CredentialVault: `export class CredentialVault {
         async save(config) {
@@ -42,12 +50,15 @@ const result = await build({
       NativeTransport: 'export class NativeTransport { request() { throw Error("NETWORK_FORBIDDEN"); } }',
       ReaderGateway: `export const READER_ORIGIN = 'https://reader.harmonyreadest.invalid'; export class ReaderGateway {
         ready = true; session = 'import';
-        async open(book, metadataOnly) {
-          const f = globalThis.importFixture; f.metadataOnly = metadataOnly;
+        async open(book, metadataOnly, settings, systemDark) {
+          const f = globalThis.importFixture; f.metadataOnly = metadataOnly; f.openSettings = structuredClone(settings); f.openSystemDark = systemDark;
           if (f.failure) this.onEvent({ version: 1, session: this.session, type: 'error', message: f.failure });
           else this.onEvent({ version: 1, session: this.session, type: 'opened' });
         }
-        async send(command) { globalThis.importFixture.commands = [...(globalThis.importFixture.commands || []), command]; } cancel() {} reset() {}
+        async send(command) {
+          globalThis.importFixture.commands = [...(globalThis.importFixture.commands || []), command];
+          if (command.type === 'close') this.onEvent({ version: 1, session: this.session, type: 'closed' });
+        } cancel() {} reset() {}
       }`
     }[args.path] }));
     b.onLoad({ filter: /\.ets$/ }, async args => ({ contents: await readFile(args.path, 'utf8'), loader: 'ts' }));
@@ -58,7 +69,12 @@ const { AppController } = await import(`data:text/javascript;base64,${Buffer.fro
 function fixture(failure = '') {
   globalThis.importFixture = { selected: ['file://picked/book.epub'], files: new Set(), saved: [], failure,
     draft: { id: 'draft', path: '/private/draft.epub', cover: '', hash: 'a'.repeat(32), position: {}, title: 'Book' } };
-  const app = new AppController({}); app.attach({}); return app;
+  const app = new AppController({ getApplicationContext: () => ({ setLanguage: language => {
+    importFixture.languageCalls = (importFixture.languageCalls || 0) + 1;
+    if (importFixture.languageCalls > 8) throw Error('RECURSIVE_LANGUAGE_CHANGE');
+    if (importFixture.languageFailure) throw Error('LANGUAGE_FAILED');
+    importFixture.appliedLanguage = language; importFixture.onConfiguration?.();
+  } }) }); app.attach({}); return app;
 }
 
 test('EPUB import completes offline from metadata without rendering or syncing', async () => {
@@ -88,6 +104,19 @@ test('cancelled picker leaves import idle', async () => {
   const app = fixture(); importFixture.selected = []; await app.importBooks();
   assert.equal(app.books.length, 0); assert.equal(app.busy, false);
   assert.equal(app.importing, false); assert.equal(importFixture.files.size, 0);
+});
+
+test('concurrent import taps launch one picker; a picker failure releases the guard for retry', async () => {
+  const app = fixture(); let picks = 0, release;
+  app.reader.ready = true;
+  const waiting = new Promise(resolve => { release = resolve; });
+  Object.defineProperty(importFixture, 'selected', { configurable: true, get() { picks++; return waiting; } });
+  const first = app.importBooks(); await app.importBooks(); assert.equal(picks, 1);
+  release([]); await first;
+  Object.defineProperty(importFixture, 'selected', { configurable: true, value: Promise.reject(Error('PICKER_FAILED')) });
+  await assert.rejects(app.importBooks(), /PICKER_FAILED/);
+  Object.defineProperty(importFixture, 'selected', { configurable: true, value: [] });
+  await app.importBooks(); assert.equal(app.busy, false); assert.equal(app.picking, false);
 });
 
 test('book/app openings check remote; reconnect and background use upload-only mode', async () => {
@@ -161,4 +190,108 @@ test('failed sync-option persistence retains the current account and enabled sta
   await assert.rejects(() => app.updateSyncOptions(false, 'Replacement'), /SAVE_FAILED/);
   assert.equal(app.config.enabled, true); assert.equal(app.config.deviceName, 'Original');
   assert.equal(importFixture.savedConfig, undefined);
+});
+
+test('shelf defaults override old book colors/fonts on every opening without replacing saved book layout or defaults', async () => {
+  const app = fixture();
+  await app.setAppearance({ themeMode: 'dark', themeColor: 'nord', serifFont: 'Selected Font', overrideFont: true, fontSize: 24 });
+  const defaults = structuredClone(importFixture.settings);
+  const book = importFixture.draft; book.style = { themeMode: 'light', themeColor: 'sepia', serifFont: 'Old Font', fontSize: 32, lineHeight: 2 };
+  app.books = [book]; importFixture.files.add(book.path);
+  await app.open(book); await app.events;
+  assert.equal(app.activeAppearance.themeMode, 'dark'); assert.equal(app.activeAppearance.themeColor, 'nord');
+  assert.equal(app.activeAppearance.serifFont, 'Selected Font'); assert.equal(app.activeAppearance.fontSize, 32);
+  assert.equal(importFixture.openSettings.themeColor, 'nord'); assert.deepEqual(importFixture.settings, defaults);
+  await app.close();
+  await app.setAppearance({ ...defaults, themeMode: 'light', themeColor: 'grass', serifFont: 'Next Font' });
+  await app.open(book); await app.events;
+  assert.equal(importFixture.openSettings.themeColor, 'grass'); assert.equal(importFixture.openSettings.serifFont, 'Next Font');
+  assert.equal(importFixture.openSettings.fontSize, 32); await app.close();
+});
+
+test('reader ready only reapplies settings; it cannot write appearance defaults', async () => {
+  const app = fixture(); app.initialized = true;
+  await app.handle({ version: 1, session: '', type: 'ready' });
+  assert.equal(importFixture.settings, undefined); assert.equal(importFixture.commands.at(-1).type, 'appearance');
+});
+
+test('closing saves the latest position and returns without waiting for a stalled upload, including repeated close taps', async () => {
+  const app = fixture(), book = importFixture.draft;
+  book.position = { cfi: 'epubcfi(old)', revision: 0, percentage: 0, updatedAt: 0 };
+  book.syncScope = app.scope(); app.books = [book]; app.activeBook = book; app.opened = true;
+  await app.handle({ version: 1, session: app.reader.session, type: 'position', position: { cfi: 'epubcfi(new)', percentage: .6 } });
+  let uploaded = false;
+  app.coordinator = { uploadPending(value, active) { assert.equal(value.position.cfi, 'epubcfi(new)'); assert.equal(active(), true); uploaded = true; return new Promise(() => {}); } };
+  app.sync = () => { throw Error('Navigation must not await sync'); };
+  let timer;
+  try {
+    await Promise.race([Promise.all([app.close(), app.close()]), new Promise((_, reject) => { timer = setTimeout(() => reject(Error('Close stalled')), 250); })]);
+  } finally { clearTimeout(timer); }
+  assert.equal(app.activeBook, undefined); assert.equal(app.busy, false); assert.equal(uploaded, true);
+  assert.equal(importFixture.saved.at(-1), book.id);
+  assert.equal(importFixture.commands.filter(c => c.type === 'close').length, 1);
+});
+
+test('language selection persists, immediately applies English/Chinese, and System tracks later OS changes', async () => {
+  const app = fixture(); importFixture.systemLanguage = 'zh-Hans';
+  await app.setLanguage('en'); assert.equal(importFixture.language, 'en'); assert.equal(importFixture.appliedLanguage, 'en');
+  await app.setLanguage('zh-Hans'); assert.equal(importFixture.language, 'zh-Hans'); assert.equal(importFixture.appliedLanguage, 'zh-Hans');
+  await app.setLanguage('auto'); assert.equal(importFixture.preferredLanguage, undefined); assert.equal(importFixture.appliedLanguage, 'zh-Hans');
+  importFixture.systemLanguage = 'en'; app.onLanguageChanged(); assert.equal(importFixture.appliedLanguage, 'en');
+  await app.setLanguage('invalid'); assert.equal(importFixture.language, 'auto');
+});
+
+test('synchronous HarmonyOS language callbacks cannot reenter language application during startup or System changes', async () => {
+  const app = fixture(); importFixture.systemLanguage = 'zh-Hans';
+  importFixture.onConfiguration = () => { app.setSystemDark(false); app.onLanguageChanged(); };
+  app.onLanguageChanged();
+  assert.equal(importFixture.languageCalls, 1); assert.equal(importFixture.appliedLanguage, 'zh-Hans');
+  app.onLanguageChanged(); assert.equal(importFixture.languageCalls, 1);
+  importFixture.systemLanguage = 'en'; app.onLanguageChanged();
+  assert.equal(importFixture.languageCalls, 2); assert.equal(importFixture.appliedLanguage, 'en');
+  await app.setLanguage('zh-Hans'); assert.equal(importFixture.languageCalls, 3);
+  await app.setLanguage('auto'); assert.equal(importFixture.languageCalls, 4);
+});
+
+test('a failed native language application releases its guard so a later configuration callback can retry', () => {
+  const app = fixture(); importFixture.languageFailure = true;
+  assert.throws(() => app.onLanguageChanged(), /LANGUAGE_FAILED/);
+  importFixture.languageFailure = false; app.onLanguageChanged();
+  assert.equal(importFixture.languageCalls, 2); assert.equal(importFixture.appliedLanguage, 'en');
+});
+
+test('consecutive language choices update immediately while ordered persistence is stalled', async () => {
+  const app = fixture(); importFixture.systemLanguage = 'zh-Hans';
+  let release; const pending = new Promise(resolve => { release = resolve; });
+  importFixture.saveLanguage = language => language === 'en' ? pending : undefined;
+  let refreshes = 0; app.changed = () => { refreshes++; };
+  importFixture.onConfiguration = () => {
+    app.setSystemDark(false); app.onLanguageChanged(importFixture.appliedLanguage);
+  };
+  const first = app.setLanguage('en');
+  assert.equal(app.language, 'en'); assert.equal(importFixture.appliedLanguage, 'en');
+  await Promise.resolve();
+  const second = app.setLanguage('zh-Hans');
+  assert.equal(app.language, 'zh-Hans'); assert.equal(importFixture.appliedLanguage, 'zh-Hans');
+  assert.equal(importFixture.languageCalls, 2); assert.equal(refreshes, 2);
+  assert.equal(importFixture.preferredLanguage, undefined);
+  app.onLanguageChanged('zh-Hans'); app.setSystemDark(false);
+  await app.setLanguage('zh-Hans');
+  assert.equal(refreshes, 2); assert.equal(importFixture.languageCalls, 2);
+  assert.deepEqual(importFixture.commands || [], []);
+  release(); await Promise.all([first, second]);
+  assert.deepEqual(importFixture.languageWrites, ['en', 'zh-Hans']);
+  assert.equal(importFixture.language, 'zh-Hans');
+});
+
+test('language write failures do not block later choices, and native failures restore the selection', async () => {
+  const app = fixture();
+  importFixture.saveLanguage = language => { if (language === 'en') throw Error('FLUSH_FAILED'); };
+  await assert.rejects(app.setLanguage('en'), /FLUSH_FAILED/);
+  await app.setLanguage('zh-Hans'); assert.equal(importFixture.language, 'zh-Hans');
+  importFixture.languageFailure = true;
+  await assert.rejects(app.setLanguage('en'), /LANGUAGE_FAILED/);
+  assert.equal(app.language, 'zh-Hans'); assert.equal(importFixture.appliedLanguage, 'zh-Hans');
+  importFixture.languageFailure = false; importFixture.saveLanguage = undefined;
+  await app.setLanguage('en'); assert.equal(importFixture.language, 'en');
 });

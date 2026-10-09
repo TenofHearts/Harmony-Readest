@@ -3,6 +3,7 @@ import { picker } from '@kit.CoreFileKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { webview } from '@kit.ArkWeb';
 import { connection } from '@kit.NetworkKit';
+import { i18n } from '@kit.LocalizationKit';
 import { BookRecord, KoSyncSettings, ReaderCommand, ReaderEvent, ReaderSettings, ThemeSettings, RemoteProgress, ReadingPosition } from '../core/Models';
 import { isThemeMode, isThemeColor } from '../core/Themes';
 import { KoSyncClient, normalizeServer } from '../core/KoSyncClient';
@@ -21,12 +22,15 @@ import { CloudFiles } from './CloudFiles';
 import { validTypography } from '../core/TypographyPolicy';
 import { migrateAppearance, StoredAppearance, validAppearanceEvent } from '../core/ThemePolicy';
 import { removeLocalFile } from './LocalFiles';
+import { readerAppearance } from '../core/AppearancePolicy';
 
 export class AppController {
   static current?: AppController;
   books: BookRecord[] = [];
   activeBook?: BookRecord;
   appearance: ReaderSettings = new ReaderSettings();
+  activeAppearance: ReaderSettings = new ReaderSettings();
+  language: string = 'auto';
   libraryTheme: ThemeSettings = new ThemeSettings();
   systemDark: boolean = false;
   config: KoSyncSettings = new KoSyncSettings();
@@ -57,6 +61,12 @@ export class AppController {
   private importReject?: (error: Error) => void;
   private openTimer: number = -1;
   private closeResolve?: () => void;
+  private closing: boolean = false;
+  private picking: boolean = false;
+  private appliedLanguage: string = '';
+  private changingLanguage: boolean = false;
+  private configurationLanguage: string = '';
+  private languageWrites: Promise<void> = Promise.resolve();
   private context: common.UIAbilityContext;
   private events: Promise<void> = Promise.resolve();
   private network?: connection.NetConnection;
@@ -67,7 +77,7 @@ export class AppController {
       fallback: async (hash: string) => this.config.enabled && this.config.userkey ? new KoSyncClient(this.config, new NativeTransport()).pull(hash) : null,
       sendPosition: (book: BookRecord, position: ReadingPosition) => new CombinedProgress(this.cloud,
         this.config.enabled && this.config.userkey ? new KoSyncClient(this.config, new NativeTransport()) : undefined).push(book.hash, position),
-      style: async (book: BookRecord) => { if (book.id === this.activeBook?.id && !this.importing && book.style) await this.setAppearance(book.style, false); } };
+      style: async (book: BookRecord) => { if (book.id === this.activeBook?.id && !this.importing && book.style) await this.applyAppearance(readerAppearance(this.appearance, book.style)); } };
     this.cloud = new CloudSyncService(this.store, this.replica, hooks);
     this.replica.cloudSync = (config) => this.cloud.sync(config);
     this.replica.afterSync = () => this.sync();
@@ -77,6 +87,8 @@ export class AppController {
   async init(): Promise<void> {
     await this.store.init(this.context); await this.vault.init(this.context);
     this.books = await this.store.list(); this.appearance = await this.store.settings();
+    this.activeAppearance = this.appearance;
+    this.language = await this.store.language(); this.applyLanguage();
     this.libraryTheme = await this.store.librarySettings();
     // Commit both scopes before any reader-ready callback can replace legacy data.
     await this.store.saveLibrarySettings(this.libraryTheme);
@@ -90,7 +102,7 @@ export class AppController {
       this.network.register(() => {});
     } catch { this.network = undefined; }
     this.initialized = true;
-    if (this.reader?.ready) { await this.updateFonts(); await this.setAppearance(this.appearance); }
+    if (this.reader?.ready) { await this.updateFonts(); await this.applyAppearance(this.appearance); }
     this.changed();
     this.replica.sync().catch(() => {});
     this.replica.refreshStorage().catch(() => {});
@@ -150,9 +162,13 @@ export class AppController {
   }
 
   async importBooks(): Promise<void> {
-    if (!this.reader?.ready || this.busy) return;
-    const selected = await new picker.DocumentViewPicker(this.context).select({ maxSelectNumber: 20,
-      fileSuffixFilters: ['EPUB books|.epub'] });
+    if (!this.reader?.ready || this.busy || this.picking || this.closing || this.activeBook) return;
+    this.picking = true;
+    let selected: string[];
+    try {
+      selected = await new picker.DocumentViewPicker(this.context).select({ maxSelectNumber: 20,
+        fileSuffixFilters: ['EPUB books|.epub'] });
+    } finally { this.picking = false; }
     if (!selected.length) return;
     this.busy = true; this.importing = true; this.error = ''; this.changed();
     try {
@@ -200,7 +216,7 @@ export class AppController {
   }
 
   async open(book: BookRecord): Promise<void> {
-    if (!this.reader?.ready || this.busy) return;
+    if (!this.reader?.ready || this.busy || this.closing || this.picking) return;
     this.epoch++; this.coordinator = undefined; this.opened = false; this.blocked = false; this.restoreFailed = false;
     this.activeBook = book; this.conflict = undefined; this.error = ''; this.controls = true;
     this.busy = true; book.lastOpenedAt = Date.now();
@@ -209,14 +225,14 @@ export class AppController {
     const epoch = this.epoch;
     try {
       if (!new CloudFiles().exists(book.path)) await this.cloud.download(book);
-      await this.setAppearance(book.style || this.appearance, false);
+      this.activeAppearance = readerAppearance(this.appearance, book.style); this.changed();
     } catch (error) { this.activeBook = undefined; this.busy = false; this.fail(error as Error); return; }
     this.openTimer = setTimeout(() => {
       if (epoch !== this.epoch || this.opened) return;
       this.reader?.reset(); this.activeBook = undefined; this.busy = false;
       this.fail(new Error('READER_TIMEOUT'));
     }, 30000);
-    try { await this.reader.open(book); } catch (error) {
+    try { await this.reader.open(book, false, this.activeAppearance, this.systemDark); } catch (error) {
       clearTimeout(this.openTimer); this.reader.cancel(); this.activeBook = undefined;
       this.busy = false; this.fail(error as Error);
     }
@@ -225,13 +241,15 @@ export class AppController {
   command(type: string): ReaderCommand { const command = new ReaderCommand(); command.type = type; return command; }
 
   async close(): Promise<void> {
+    if (this.closing || !this.activeBook) return;
+    const book = this.activeBook;
+    this.closing = true;
     clearTimeout(this.openTimer);
     clearTimeout(this.debounce);
-    if (!this.activeBook) return;
     await this.events;
-    this.busy = true; this.changed();
-    // Flush the chosen local position before tearing down the reader.
-    try { if (!this.blocked && this.progressEnabled()) await this.sync(); } catch {}
+    const coordinator = this.blocked ? undefined : this.coordinator;
+    const scope = this.scope();
+    // Position events save locally before close; network latency must not block navigation.
     if (this.opened && this.reader) {
       await new Promise<void>((resolve: () => void) => {
         const timer = setTimeout(resolve, 2000);
@@ -239,10 +257,13 @@ export class AppController {
         this.reader!.send(this.command('close')).catch(() => resolve());
       });
     }
+    this.closeResolve = undefined;
     await this.events;
     this.epoch++; this.reader?.cancel(); this.coordinator = undefined;
     this.activeBook = undefined; this.opened = false; this.busy = false; this.conflict = undefined;
-    this.books.sort((a: BookRecord, b: BookRecord) => b.lastOpenedAt - a.lastOpenedAt); this.changed();
+    this.activeAppearance = this.appearance; this.closing = false; this.changed();
+    coordinator?.uploadPending(book, () => scope === this.scope() && book.syncScope === scope && this.activeBook?.id !== book.id)
+      .catch(() => {});
   }
 
   async remove(book: BookRecord): Promise<void> {
@@ -261,13 +282,54 @@ export class AppController {
       await this.store.save(this.activeBook);
       clearTimeout(this.debounce); this.debounce = setTimeout(() => { this.replica.sync().catch(() => {}); }, 5000);
     }
+    await this.applyAppearance(settings);
+  }
+
+  private async applyAppearance(settings: ReaderSettings): Promise<void> {
+    this.activeAppearance = settings;
     const command = this.command('appearance'); command.settings = settings; command.systemDark = this.systemDark;
-    if (this.reader?.ready) await this.reader.send(command); this.changed();
+    this.changed();
+    if (this.reader?.ready) await this.reader.send(command);
+  }
+
+  private applyLanguage(): boolean {
+    const language = this.language === 'auto' ? i18n.System.getSystemLanguage() : this.language;
+    if (language === this.appliedLanguage) return false;
+    const previous = this.appliedLanguage;
+    // HarmonyOS may invoke onConfigurationUpdate synchronously inside setLanguage.
+    this.appliedLanguage = language;
+    this.changingLanguage = true;
+    try { this.context.getApplicationContext().setLanguage(language); }
+    catch (error) { this.appliedLanguage = previous; throw error as Error; }
+    finally { this.changingLanguage = false; }
+    return true;
+  }
+
+  async setLanguage(language: string): Promise<void> {
+    if (!['auto', 'en', 'zh-Hans'].includes(language) || language === this.language) return;
+    const previous = this.language;
+    // Publish the choice before native callbacks, and update resources before disk I/O.
+    // The repository restores it on launch; a second OS preference setter is unnecessary.
+    this.language = language;
+    try { this.applyLanguage(); } catch (error) { this.language = previous; throw error as Error; }
+    this.changed();
+    // A slow first flush must neither block the next choice nor overwrite it later.
+    const write = this.languageWrites.then(() => this.store.saveLanguage(language));
+    this.languageWrites = write.catch(() => {});
+    await write;
+  }
+
+  onLanguageChanged(language?: string): void {
+    const updated = language !== undefined && language !== this.configurationLanguage;
+    if (language !== undefined) this.configurationLanguage = language;
+    if (this.changingLanguage) return;
+    const applied = this.language === 'auto' && this.applyLanguage();
+    if (applied || updated) this.changed();
   }
 
   async updateFonts(): Promise<void> {
     if (this.reader?.ready) {
-      this.reader.fonts = this.fonts.fonts;
+      this.reader.fonts = this.fonts.readerFontFiles();
       const command = this.command('fonts'); command.fonts = this.fonts.readerFonts(READER_ORIGIN); await this.reader.send(command);
     }
     this.changed();
@@ -297,6 +359,7 @@ export class AppController {
   }
 
   setSystemDark(dark: boolean): void {
+    if (dark === this.systemDark) return;
     this.systemDark = dark;
     const command = this.command('systemTheme'); command.systemDark = dark;
     if (this.reader?.ready) this.reader.send(command).catch(() => {});
@@ -308,7 +371,7 @@ export class AppController {
     const book = this.activeBook;
     if (event.type === 'ready') {
       if (this.initialized) await this.updateFonts();
-      if (this.initialized) await this.setAppearance(this.appearance, false);
+      if (this.initialized) await this.applyAppearance(this.appearance);
       else this.changed();
       return;
     }
@@ -330,6 +393,8 @@ export class AppController {
       if (this.progressEnabled() && !this.blocked) this.debounce = setTimeout(() => { this.sync().catch(() => {}); }, 5000);
     } else if (event.type === 'position' && event.position && !book.position.cfi) {
       book.position = event.position; book.position.updatedAt = 0; book.position.revision = 0;
+    } else if (event.type === 'position') {
+      return;
     } else if (event.type === 'opened') {
       clearTimeout(this.openTimer);
       if (this.importing) { this.importResolve?.(); this.importResolve = undefined; }

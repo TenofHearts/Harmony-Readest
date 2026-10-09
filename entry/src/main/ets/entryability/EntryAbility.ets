@@ -38,6 +38,7 @@ export default class EntryAbility extends UIAbility {
 
   onConfigurationUpdate(config: Configuration): void {
     if (config.colorMode !== undefined) AppController.current?.setSystemDark(config.colorMode === ConfigurationConstant.ColorMode.COLOR_MODE_DARK);
+    if (config.language !== undefined) AppController.current?.onLanguageChanged(config.language);
   }
 
   onWindowStageDestroy(): void {

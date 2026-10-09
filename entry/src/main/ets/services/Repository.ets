@@ -70,6 +70,15 @@ export class Repository {
     await this.prefs!.put('appearance', JSON.stringify(settings)); await this.prefs!.flush();
   }
 
+  async language(): Promise<string> {
+    const value = await this.prefs!.get('language', 'auto') as string;
+    return ['auto', 'en', 'zh-Hans'].includes(value) ? value : 'auto';
+  }
+
+  async saveLanguage(language: string): Promise<void> {
+    await this.prefs!.put('language', language); await this.prefs!.flush();
+  }
+
   async deviceId(): Promise<string> {
     let value = await this.prefs!.get('deviceId', '') as string;
     if (!value) { value = util.generateRandomUUID(); await this.prefs!.put('deviceId', value); await this.prefs!.flush(); }
