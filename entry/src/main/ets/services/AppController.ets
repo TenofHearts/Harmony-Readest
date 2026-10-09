@@ -23,6 +23,8 @@ import { validTypography } from '../core/TypographyPolicy';
 import { migrateAppearance, StoredAppearance, validAppearanceEvent } from '../core/ThemePolicy';
 import { removeLocalFile } from './LocalFiles';
 import { readerAppearance } from '../core/AppearancePolicy';
+import { validAnnotations } from '../core/AnnotationPolicy';
+import { shareBook } from './BookSharing';
 
 export class AppController {
   static current?: AppController;
@@ -274,6 +276,19 @@ export class AppController {
   }
   async removeCloud(book: BookRecord): Promise<void> { await this.cloud.remove(book); }
 
+  async share(book: BookRecord): Promise<void> {
+    await this.cloud.download(book);
+    await shareBook(this.context, book);
+  }
+
+  async syncNow(): Promise<void> {
+    // Reconcile first so a manual sync still presents conflicting positions.
+    let failure: Error | undefined;
+    try { await this.replica.sync(); } catch (error) { failure = error as Error; }
+    await this.sync('reconcile');
+    if (failure) throw failure;
+  }
+
   async setAppearance(settings: ReaderSettings, persistBook: boolean = true): Promise<void> {
     settings = migrateAppearance(settings as StoredAppearance);
     await this.store.saveSettings(settings); this.appearance = settings;
@@ -410,7 +425,12 @@ export class AppController {
       this.busy = false; this.blocked = true; throw error;
     } else if (event.type === 'closed') { this.closeResolve?.(); this.closeResolve = undefined; }
     else if (event.type === 'toggleControls') this.controls = !this.controls;
-    else if (event.type === 'readerAction' && event.action && ['library', 'settings', 'upload', 'reconcile'].includes(event.action)) {
+    else if (event.type === 'annotationsChanged' && event.annotations && !this.importing && this.opened) {
+      if (!validAnnotations(event.annotations)) return;
+      book.annotations = event.annotations;
+      await this.store.save(book);
+    }
+    else if (event.type === 'readerAction' && event.action && ['library', 'settings', 'sync', 'share'].includes(event.action)) {
       this.readerAction(event.action);
     } else if (event.type === 'appearanceChanged' && event.settings) {
       const settings = event.settings;

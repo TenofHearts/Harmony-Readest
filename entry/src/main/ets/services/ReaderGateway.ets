@@ -61,6 +61,7 @@ export class ReaderGateway {
     this.book = book; this.session = util.generateRandomUUID();
     const command = new ReaderCommand(); command.type = 'open'; command.cfi = book.position.cfi;
     command.metadataOnly = metadataOnly;
+    command.annotations = book.annotations || [];
     command.settings = settings; command.systemDark = systemDark;
     command.url = `${READER_ORIGIN}/books/${book.id}.epub`;
     await this.send(command);

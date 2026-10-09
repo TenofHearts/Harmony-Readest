@@ -13,6 +13,15 @@ const result = await build({
     b.onResolve({ filter: /^@kit\./ }, args => ({ path: args.path, namespace: 'kit' }));
     b.onLoad({ filter: /.*/, namespace: 'kit' }, () => ({ contents: `
       export const picker = { DocumentViewPicker: class { async select() { return globalThis.importFixture.selected; } } };
+      export const fileUri = { getUriFromPath: path => 'file://' + path };
+      export const uniformTypeDescriptor = { UniformDataType: { EPUB: 'general.epub' } };
+      export const systemShare = {
+        SharedData: class { constructor(record) { this.record = record; } },
+        SharePreviewMode: { DETAIL: 1 },
+        ShareController: class { constructor(data) { this.data = data; } async show(context, options) {
+          globalThis.importFixture.shared = { record: this.data.record, context, options };
+        } }
+      };
       export const fileIo = {
         accessSync(path) { if (!globalThis.importFixture.files.has(path)) throw Error('ENOENT'); return true; },
         unlinkSync(path) { if (!globalThis.importFixture.files.delete(path)) throw Error('ENOENT'); }
@@ -106,6 +115,34 @@ test('cancelled picker leaves import idle', async () => {
   assert.equal(app.importing, false); assert.equal(importFixture.files.size, 0);
 });
 
+test('EPUB sharing sends the actual private file URI and EPUB type to the system sheet', async () => {
+  const app = fixture(); const book = importFixture.draft; book.author = 'Author'; importFixture.files.add(book.path);
+  await app.share(book);
+  assert.deepEqual(importFixture.shared.record, { utd: 'general.epub', uri: 'file:///private/draft.epub', title: 'Book', description: 'Author' });
+  assert.equal(importFixture.shared.options.previewMode, 1);
+  importFixture.files.clear(); importFixture.shared = undefined;
+  await assert.rejects(app.share(book)); assert.equal(importFixture.shared, undefined);
+});
+
+test('the combined sync action refreshes the library and reconciles progress once', async () => {
+  const app = fixture(); const calls = [];
+  app.replica.sync = async () => { calls.push('library'); };
+  app.sync = async mode => { calls.push(mode); };
+  await app.syncNow(); assert.deepEqual(calls, ['library', 'reconcile']);
+});
+
+test('annotations persist only for the opened current book and reject malformed bridge records', async () => {
+  const app = fixture(); const book = importFixture.draft; app.activeBook = book; app.books = [book];
+  await app.handle({ version: 1, session: app.reader.session, type: 'opened' }); importFixture.saved = [];
+  const annotations = [{ id: 'mark', kind: 'highlight', cfi: 'epubcfi(/6/2!/4/2:1)', text: 'Passage', chapter: 'Chapter', percentage: 0.2, color: '#fff176', createdAt: 10 }];
+  const event = { version: 1, session: app.reader.session, type: 'annotationsChanged', annotations };
+  await app.handle(event); assert.deepEqual(book.annotations, annotations); assert.deepEqual(importFixture.saved, ['draft']);
+  for (const invalid of [{ ...event, session: 'previous-book', annotations: [] }, { ...event, annotations: [{ ...annotations[0], percentage: 2 }] },
+    { ...event, annotations: [{ ...annotations[0], color: 'url(https://example.com)' }] }]) await app.handle(invalid);
+  assert.deepEqual(book.annotations, annotations); assert.equal(importFixture.saved.length, 1);
+  await app.handle({ ...event, annotations: [] }); assert.deepEqual(book.annotations, []);
+});
+
 test('concurrent import taps launch one picker; a picker failure releases the guard for retry', async () => {
   const app = fixture(); let picks = 0, release;
   app.reader.ready = true;
@@ -167,9 +204,9 @@ test('shelf and reader themes persist independently; system changes never overwr
 test('native reader actions accept only available actions from the current book', async () => {
   const app = fixture(); app.activeBook = importFixture.draft; const actions = [];
   app.readerAction = action => actions.push(action);
-  for (const action of ['library', 'settings', 'upload', 'reconcile', 'unsupported']) await app.handle({ version: 1, session: app.reader.session, type: 'readerAction', action });
-  await app.handle({ version: 1, session: 'closed-book', type: 'readerAction', action: 'upload' });
-  assert.deepEqual(actions, ['library', 'settings', 'upload', 'reconcile']);
+  for (const action of ['library', 'settings', 'sync', 'share', 'upload', 'reconcile', 'unsupported']) await app.handle({ version: 1, session: app.reader.session, type: 'readerAction', action });
+  await app.handle({ version: 1, session: 'closed-book', type: 'readerAction', action: 'share' });
+  assert.deepEqual(actions, ['library', 'settings', 'sync', 'share']);
 });
 
 test('signed-in sync options save locally without authentication, progress traffic, or credential changes', async () => {

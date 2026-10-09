@@ -31,9 +31,11 @@ test('each open sends appearance atomically with the new book session', async ()
   let command;
   const gateway = new ReaderGateway({}, { async runJavaScript(script) { command = JSON.parse(script.slice('window.readerReceive('.length, -1)); } });
   const settings = { themeMode: 'dark', themeColor: 'nord', serifFont: 'Selected Font' };
-  await gateway.open({ id: 'book', position: { cfi: 'epubcfi(saved)' } }, false, settings, true);
+  const annotations = [{ id: 'bookmark', kind: 'bookmark', cfi: 'epubcfi(saved)' }];
+  await gateway.open({ id: 'book', position: { cfi: 'epubcfi(saved)' }, annotations }, false, settings, true);
   assert.deepEqual(command.settings, settings); assert.equal(command.session, 'session'); assert.equal(command.systemDark, true);
   assert.equal(command.type, 'open'); assert.equal(command.cfi, 'epubcfi(saved)');
+  assert.deepEqual(command.annotations, annotations);
 });
 globalThis.WebResourceResponse = class {
   constructor() { this.done = new Promise(resolve => this.resolve = resolve); }

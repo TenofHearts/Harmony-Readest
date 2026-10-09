@@ -25,6 +25,7 @@ export class Repository {
     const books: BookRecord[] = [];
     try { while (rows.goToNextRow()) {
       const book = JSON.parse(rows.getString(0)) as BookRecord;
+      book.annotations = book.annotations || [];
       book.cloudAccount = book.cloudAccount || ''; book.cloudBook = book.cloudBook || ''; book.cloudConfig = book.cloudConfig || '';
       book.cloudUploaded = book.cloudUploaded || false; book.cloudDeleted = book.cloudDeleted || false;
       book.style = book.style || null; book.styleUpdatedAt = book.styleUpdatedAt || 0; book.metadataJSON = book.metadataJSON || ''; books.push(book);

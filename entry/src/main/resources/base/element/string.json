@@ -1,6 +1,126 @@
 {
   "string": [
     {
+      "name": "book_actions",
+      "value": "Book actions"
+    },
+    {
+      "name": "details",
+      "value": "Details"
+    },
+    {
+      "name": "book_details",
+      "value": "Book Details"
+    },
+    {
+      "name": "share",
+      "value": "Share"
+    },
+    {
+      "name": "share_book",
+      "value": "Share Book"
+    },
+    {
+      "name": "delete",
+      "value": "Delete"
+    },
+    {
+      "name": "filename",
+      "value": "File Name"
+    },
+    {
+      "name": "publisher",
+      "value": "Publisher"
+    },
+    {
+      "name": "book_language",
+      "value": "Language"
+    },
+    {
+      "name": "published",
+      "value": "Published"
+    },
+    {
+      "name": "identifier",
+      "value": "Identifier"
+    },
+    {
+      "name": "imported_on",
+      "value": "Imported"
+    },
+    {
+      "name": "description",
+      "value": "Description"
+    },
+    {
+      "name": "no_description",
+      "value": "No description available."
+    },
+    {
+      "name": "metadata",
+      "value": "Metadata"
+    },
+    {
+      "name": "format",
+      "value": "Format"
+    },
+    {
+      "name": "unknown",
+      "value": "Unknown"
+    },
+    {
+      "name": "add_bookmark",
+      "value": "Add Bookmark"
+    },
+    {
+      "name": "remove_bookmark",
+      "value": "Remove Bookmark"
+    },
+    {
+      "name": "bookmarks",
+      "value": "Bookmarks"
+    },
+    {
+      "name": "annotations",
+      "value": "Annotations"
+    },
+    {
+      "name": "highlights",
+      "value": "Highlights"
+    },
+    {
+      "name": "highlight_hint",
+      "value": "Select text in the book to highlight it."
+    },
+    {
+      "name": "empty_bookmarks",
+      "value": "No bookmarks yet."
+    },
+    {
+      "name": "empty_highlights",
+      "value": "No highlights yet."
+    },
+    {
+      "name": "highlight_yellow",
+      "value": "Yellow"
+    },
+    {
+      "name": "highlight_green",
+      "value": "Green"
+    },
+    {
+      "name": "highlight_blue",
+      "value": "Blue"
+    },
+    {
+      "name": "highlight_pink",
+      "value": "Pink"
+    },
+    {
+      "name": "highlight_purple",
+      "value": "Purple"
+    },
+    {
       "name": "module_desc",
       "value": "HarmonyOS EPUB reader"
     },
@@ -246,7 +366,7 @@
     },
     {
       "name": "about_version",
-      "value": "Version 0.0.7 · HarmonyOS"
+      "value": "Version 0.0.8 · HarmonyOS"
     },
     {
       "name": "about_license",

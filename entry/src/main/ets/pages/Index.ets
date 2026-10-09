@@ -9,6 +9,7 @@ import { AppWindow } from '../services/AppWindow';
 import { AppController } from '../services/AppController';
 import { errorMessage } from '../core/Errors';
 import { ReaderGateway, READER_URL, BRIDGE_PERMISSION } from '../services/ReaderGateway';
+import { BookDetails, bookDetails } from '../core/BookDetails';
 
 class BridgeReceiver {
   private deliver: (value: string) => void;
@@ -126,7 +127,17 @@ struct Index {
   @State safeTop: number = 0;
   @State safeBottom: number = 0;
   @State initialized: boolean = false;
+  @State appearanceReady: boolean = false;
   @State confirmRemove: string = '';
+  @State selectedBook: string = '';
+  @State heldCover: string = '';
+  @State heldCoverScale: number = 1;
+  @State detailsOpen: boolean = false;
+  @State detailsMetadataExpanded: boolean = true;
+  @State detailsDescriptionExpanded: boolean = true;
+  @State details: BookDetails = new BookDetails();
+  @State deleteCloud: boolean = false;
+  @State sharing: boolean = false;
   @State confirmFontRemove: string = '';
   @State query: string = '';
   @State viewMode: string = 'grid';
@@ -142,8 +153,8 @@ struct Index {
     this.app.readerAction = (action: string) => {
       if (action === 'library') this.run(() => this.app!.close());
       else if (action === 'settings') this.openSettings();
-      else if (action === 'upload') this.run(() => this.app!.sync('manual-upload'));
-      else if (action === 'reconcile') this.run(() => this.app!.sync('reconcile'));
+      else if (action === 'sync') this.run(() => this.app!.syncNow());
+      else if (action === 'share' && this.app!.activeBook) this.shareSelected(this.app!.activeBook.id);
     };
     this.app.init().then(() => {
       this.server = this.app!.config.serverUrl; this.username = this.app!.config.username;
@@ -155,12 +166,14 @@ struct Index {
 
   aboutToDisappear(): void { AppWindow.changed = () => {}; this.app?.dispose(); }
   onBackPress(): boolean {
+    if (this.detailsOpen) { this.detailsOpen = false; return true; }
     if (this.fontPicker) { this.fontPicker = ''; return true; }
     if (this.confirmFontRemove) { this.confirmFontRemove = ''; return true; }
     if (this.confirmRemove) { this.confirmRemove = ''; return true; }
     if (this.conflict) return true;
     if (this.settingsOpen) { this.settingsOpen = false; return true; }
     if (this.viewMenu) { this.viewMenu = false; return true; }
+    if (this.selectedBook) { this.selectedBook = ''; return true; }
     if (this.reading) { this.run(() => this.gateway!.send(this.app!.command('back'))); return true; }
     return false;
   }
@@ -196,6 +209,7 @@ struct Index {
     if (typography !== this.typographySnapshot) { this.typographySnapshot = typography; this.typography = JSON.parse(typography) as ReaderSettings; }
     const primary = this.app.fonts.nativeFamily(preferredFont(this.app.appearance));
     this.appFontFamily = this.app.appearance.defaultCJKFont ? `${this.app.appearance.defaultCJKFont},${primary}` : this.fontFamily(primary);
+    this.appearanceReady = this.app.initialized;
     if (this.customFonts.length !== this.app.fonts.fonts.length || this.customFonts.some((font: CustomFont, index: number) => font.id !== this.app!.fonts.fonts[index].id)) {
       this.customFonts = this.app.fonts.fonts.slice();
     }
@@ -217,17 +231,23 @@ struct Index {
     if (this.conflict) this.settingsOpen = false;
     if (this.reading && this.gateway?.ready) {
       const chrome = new ReaderChromeState(); chrome.controls = this.controls; chrome.syncEnabled = this.app.progressEnabled();
-      chrome.busy = this.busy; chrome.status = this.t(`status_${this.status}`);
+      chrome.busy = this.busy || this.replicaBusy || this.status === 'checking'; chrome.status = this.t(`status_${this.status}`);
       const labels: Record<string, string> = { 'library': this.t('library'), 'toc': this.t('contents'), 'color': this.t('theme'), 'progress': this.t('reading_progress'),
         'font': this.t('font_layout'), 'menu': this.t('view_options'), 'close': this.t('dismiss'), 'previous': this.t('previous_page'), 'next': this.t('next_page'),
         'previousSection': this.t('previous_section'), 'nextSection': this.t('next_section'), 'historyBack': this.t('go_back'), 'historyForward': this.t('go_forward'),
         'decrease': this.t('decrease_font'), 'increase': this.t('increase_font'), 'fontSize': this.t('font_size'), 'lineHeight': this.t('line_height'),
         'light': this.t('theme_light'), 'dark': this.t('theme_dark'), 'settings': this.t('settings'),
-        'upload': this.t('sync_now'), 'reconcile': this.t('check_remote'), 'auto': this.t('theme_system'), 'themeMode': this.t('theme_mode'), 'themeColor': this.t('theme_color'),
+        'sync': this.t('integrations'), 'share': this.t('share_book'), 'auto': this.t('theme_system'), 'themeMode': this.t('theme_mode'), 'themeColor': this.t('theme_color'),
         'default': this.t('scheme_default'), 'gray': this.t('scheme_gray'), 'sepia': this.t('scheme_sepia'), 'grass': this.t('scheme_grass'),
         'cherry': this.t('scheme_cherry'), 'sky': this.t('scheme_sky'), 'solarized': this.t('scheme_solarized'), 'gruvbox': this.t('scheme_gruvbox'),
         'nord': this.t('scheme_nord'), 'contrast': this.t('scheme_contrast'), 'sunset': this.t('scheme_sunset') };
       chrome.labels = labels;
+      labels['bookmark'] = this.t('add_bookmark'); labels['removeBookmark'] = this.t('remove_bookmark');
+      labels['highlights'] = this.t('annotations'); labels['bookmarks'] = this.t('bookmarks'); labels['highlightTab'] = this.t('highlights');
+      labels['highlightHint'] = this.t('highlight_hint'); labels['emptyBookmarks'] = this.t('empty_bookmarks'); labels['emptyHighlights'] = this.t('empty_highlights');
+      labels['deleteAnnotation'] = this.t('delete'); labels['clearSelection'] = this.t('dismiss');
+      labels['yellow'] = this.t('highlight_yellow'); labels['green'] = this.t('highlight_green'); labels['blue'] = this.t('highlight_blue');
+      labels['pink'] = this.t('highlight_pink'); labels['purple'] = this.t('highlight_purple');
       labels["fontSize"] = this.t("font_size");
       labels["minimumFontSize"] = this.t("minimum_font_size");
       labels["fontWeight"] = this.t("font_weight");
@@ -309,8 +329,33 @@ struct Index {
     this.visibleCount = visible.length; this.shelfSource.update(visible);
   }
   private selectBook(book: ShelfBook): void {
+    if (this.sharing) return;
     const selected = this.app!.books.find((item: BookRecord) => item.id === book.id);
-    if (selected && !this.busy) this.run(() => this.app!.open(selected));
+    if (selected && !this.busy) { this.selectedBook = ''; this.run(() => this.app!.open(selected)); }
+  }
+  private showBookActions(id: string): void {
+    if (this.busy || this.sharing) return;
+    this.viewMenu = false; this.selectedBook = id;
+    this.heldCover = id; this.heldCoverScale = 1;
+    this.getUIContext().keyframeAnimateTo({ iterations: 1 }, [
+      { duration: 110, curve: Curve.EaseOut, event: () => { this.heldCoverScale = 1.04; } },
+      { duration: 170, curve: Curve.EaseInOut, event: () => { this.heldCoverScale = 1; } }
+    ]);
+  }
+  private showDetails(): void {
+    const book = this.app?.books.find((item: BookRecord) => item.id === this.selectedBook);
+    if (book) { this.details = bookDetails(book); this.detailsMetadataExpanded = true; this.detailsDescriptionExpanded = true; this.detailsOpen = true; }
+  }
+  private shareSelected(id: string): void {
+    if (this.sharing) return;
+    const book = this.app?.books.find((item: BookRecord) => item.id === id);
+    if (!book) return;
+    this.sharing = true;
+    this.run(async () => { try { await this.app!.share(book); } finally { this.sharing = false; } });
+  }
+  private askDelete(): void {
+    const book = this.app?.books.find((item: BookRecord) => item.id === this.selectedBook);
+    if (book) { this.deleteCloud = !book.path; this.confirmRemove = book.id; }
   }
   private run(action: () => Promise<void>): void { action().catch((error: Error) => { if (this.app) this.app.error = errorMessage(error); this.error = errorMessage(error); }); }
   private changeAppearance(): void {
@@ -677,15 +722,44 @@ struct Index {
   }
 
   @Builder
-  importCover() {
+  importCover(showLabel: boolean = true) {
     Button({ type: ButtonType.Normal }) {
-      Column({ space: 14 }) {
-        this.icon('plus', 32)
-        Text(this.t('add_book')).fontFamily(this.appFontFamily).fontSize(14).fontWeight(FontWeight.Medium).fontColor(this.fg()).textAlign(TextAlign.Center)
-      }.width('100%').height('100%').justifyContent(FlexAlign.Center).padding(12)
+      Column({ space: showLabel ? 14 : 0 }) {
+        this.icon('plus', showLabel ? 32 : 24)
+        if (showLabel) {
+          Text(this.t('add_book')).fontFamily(this.appFontFamily).fontSize(14).fontWeight(FontWeight.Medium).fontColor(this.fg()).textAlign(TextAlign.Center)
+        }
+      }.width('100%').height('100%').justifyContent(FlexAlign.Center).padding(showLabel ? 12 : 8)
     }.width('100%').aspectRatio(28 / 41).padding(0).borderRadius(3).backgroundColor(this.surface())
       .border({ width: 1, color: this.dividerTone(), style: BorderStyle.Dashed })
       .accessibilityText(this.t('import')).enabled(this.initialized && !this.busy).onClick(() => { this.run(() => this.app!.importBooks()); })
+  }
+
+  @Builder
+  shelfViewOptions() {
+    Column({ space: 4 }) {
+      Text(this.t('view_options')).fontFamily(this.appFontFamily).fontSize(12).fontColor(this.muted()).width('100%').padding({ left: 12, top: 8, bottom: 8 })
+      ForEach(['grid', 'list'], (mode: string) => {
+        Button({ type: ButtonType.Normal }) {
+          Row({ space: 12 }) {
+            this.icon(mode, 18)
+            Text(this.t(`view_${mode}`)).fontFamily(this.appFontFamily).fontSize(14).fontColor(this.fg()).layoutWeight(1)
+            if (this.viewMode === mode) { Text('✓').fontFamily(this.appFontFamily).fontSize(14).fontColor(this.fg()) }
+          }.width('100%').padding(12)
+        }.width('100%').height(44).backgroundColor(this.viewMode === mode ? this.inset() : Color.Transparent).borderRadius(8)
+          .onClick(() => { this.viewMode = mode; this.viewMenu = false; })
+      })
+      this.rule()
+      ForEach(['recent', 'title'], (sort: string) => {
+        Button({ type: ButtonType.Normal }) {
+          Row() {
+            Text(this.t(`sort_${sort}`)).fontFamily(this.appFontFamily).fontSize(14).fontColor(this.fg()).layoutWeight(1)
+            if (this.sortBy === sort) { Text('✓').fontFamily(this.appFontFamily).fontSize(14).fontColor(this.fg()) }
+          }.width('100%').padding(12)
+        }.width('100%').height(44).backgroundColor(this.sortBy === sort ? this.inset() : Color.Transparent).borderRadius(8)
+          .onClick(() => { this.sortBy = sort; this.updateShelf(); this.viewMenu = false; })
+      })
+    }.width(220).padding(8).backgroundColor(this.surface()).borderRadius(12).border({ width: 1, color: this.dividerTone() })
   }
 
   @Builder
@@ -699,7 +773,22 @@ struct Index {
             .onChange((value: string) => { this.query = value; this.updateShelf(); })
           if (this.query) { this.iconButton('close', this.t('clear_search'), () => { this.query = ''; this.updateShelf(); }) }
         }.layoutWeight(1).height(38).padding({ left: 12, right: 2 }).backgroundColor(this.inset()).borderRadius(24)
-        this.iconButton('view', this.t('view_options'), () => { this.viewMenu = !this.viewMenu; })
+        Row() { this.iconButton('view', this.t('view_options'), () => { this.viewMenu = !this.viewMenu; }) }
+          .width(40).height(40).id('shelf-view-options')
+          .bindPopup(this.viewMenu, {
+            builder: this.shelfViewOptions,
+            placement: Placement.BottomRight,
+            enableArrow: false,
+            autoCancel: true,
+            mask: true,
+            focusable: true,
+            targetSpace: 4,
+            popupColor: this.surface(),
+            backgroundBlurStyle: BlurStyle.NONE,
+            radius: 12,
+            shadow: ShadowStyle.OUTER_DEFAULT_MD,
+            onStateChange: (event) => { this.viewMenu = event.isVisible; }
+          })
         this.iconButton('menu', this.t('settings'), () => { this.viewMenu = false; this.openSettings(); })
       }.height(60).width('100%').padding({ left: 16, right: 12 })
       this.rule()
@@ -722,9 +811,9 @@ struct Index {
           GridItem() { Column({ space: 8 }) { this.importCover(); Text(this.t('import')).fontFamily(this.appFontFamily).fontSize(13).fontColor(this.muted()).width('100%') }.width('100%') }
           LazyForEach(this.shelfSource, (book: ShelfBook) => {
             GridItem() {
-              Column({ space: 8 }) {
+              Column({ space: 6 }) {
                 Stack({ alignContent: Alignment.TopEnd }) {
-                  if (book.cover) { Image(`file://${book.cover}`).width('100%').height('100%').objectFit(ImageFit.Cover) }
+                  if (book.cover) { Image(`file://${book.cover}`).width('100%').height('100%').objectFit(ImageFit.Cover).draggable(false) }
                   else {
                     Column({ space: 14 }) {
                       this.icon('book', 28)
@@ -734,12 +823,11 @@ struct Index {
                   }
                 }.width('100%').aspectRatio(28 / 41).borderRadius(3).clip(true)
                   .shadow({ radius: 4, offsetY: 2, color: '#20000000' }).onClick(() => this.selectBook(book))
-                Row({ space: 4 }) {
-                  Text(book.title).fontFamily(this.appFontFamily).fontSize(13).fontColor(this.fg()).layoutWeight(1).maxLines(1).textOverflow({ overflow: TextOverflow.Ellipsis })
-                  Button({ type: ButtonType.Circle }) { this.icon('dots', 16) }.width(24).height(24).padding(4).backgroundColor(Color.Transparent)
-                    .accessibilityText(this.t('remove')).onClick(() => { this.confirmRemove = book.id; })
-                }.width('100%')
-                Text(book.author || this.t('unknown_author')).fontFamily(this.appFontFamily).fontSize(11).fontColor(this.muted()).maxLines(1).width('100%').textOverflow({ overflow: TextOverflow.Ellipsis })
+                  .border({ width: this.selectedBook === book.id ? 2 : 0, color: this.primary() })
+                  .scale({ x: this.heldCover === book.id ? this.heldCoverScale : 1, y: this.heldCover === book.id ? this.heldCoverScale : 1 })
+                  .priorityGesture(LongPressGesture({ duration: 1000 }).onAction(() => this.showBookActions(book.id)))
+                  .accessibilityText(`${book.title}, ${this.t('book_actions')}`)
+                Text(book.title).fontFamily(this.appFontFamily).fontSize(12).fontColor(this.fg()).width('100%').maxLines(1).textOverflow({ overflow: TextOverflow.Ellipsis })
                 if (!book.path) { Text(this.t('cloud_download')).fontFamily(this.appFontFamily).fontSize(11).fontColor(this.primary()).width('100%') }
                 Row({ space: 8 }) {
                   Progress({ value: book.position.percentage * 100, total: 100, type: ProgressType.Linear }).color(this.muted()).backgroundColor(this.inset()).height(2).layoutWeight(1)
@@ -748,34 +836,124 @@ struct Index {
               }.width('100%').alignItems(HorizontalAlign.Start)
             }
           }, (book: ShelfBook) => JSON.stringify([book.id, book.title, book.author, book.path, book.cover, book.position.revision, book.position.percentage]))
-        }.columnsTemplate(this.columns()).columnsGap(24).rowsGap(28).layoutWeight(1).width('100%').padding({ left: 24, right: 24, bottom: 24 })
+        }.columnsTemplate(this.columns()).columnsGap(24).rowsGap(20).layoutWeight(1).width('100%').padding({ left: 24, right: 24, bottom: 20 })
       } else {
         List({ space: 0 }) {
           ListItem() {
             Row({ space: 16 }) {
-              Column() { this.importCover() }.width(56)
+              Column() { this.importCover(false) }.width(56)
               Text(this.t('import')).fontFamily(this.appFontFamily).fontSize(15).fontColor(this.fg()).layoutWeight(1)
             }.width('100%').padding({ top: 14, bottom: 14 }).onClick(() => { if (this.initialized && !this.busy) this.run(() => this.app!.importBooks()); })
           }
           LazyForEach(this.shelfSource, (book: ShelfBook) => {
             ListItem() {
               Row({ space: 16 }) {
-                if (book.cover) { Image(`file://${book.cover}`).width(56).height(82).objectFit(ImageFit.Cover).borderRadius(3) }
-                else { Column() { this.icon('book', 24) }.width(56).height(82).justifyContent(FlexAlign.Center).backgroundColor(this.inset()).borderRadius(3) }
+                Stack() {
+                  if (book.cover) { Image(`file://${book.cover}`).width('100%').height('100%').objectFit(ImageFit.Cover).draggable(false) }
+                  else { Column() { this.icon('book', 24) }.width('100%').height('100%').justifyContent(FlexAlign.Center).backgroundColor(this.inset()) }
+                }.width(56).height(82).borderRadius(3).clip(true)
+                  .scale({ x: this.heldCover === book.id ? this.heldCoverScale : 1, y: this.heldCover === book.id ? this.heldCoverScale : 1 })
+                  .priorityGesture(LongPressGesture({ duration: 1000 }).onAction(() => this.showBookActions(book.id)))
                 Column({ space: 6 }) {
                   Text(book.title).fontFamily(this.appFontFamily).fontSize(15).fontColor(this.fg()).maxLines(2).textOverflow({ overflow: TextOverflow.Ellipsis })
                   Text(book.author || this.t('unknown_author')).fontFamily(this.appFontFamily).fontSize(12).fontColor(this.muted()).maxLines(1)
                   if (!book.path) { Text(this.t('cloud_download')).fontFamily(this.appFontFamily).fontSize(11).fontColor(this.primary()) }
                   Text(`${Math.round(book.position.percentage * 100)}%`).fontFamily(this.appFontFamily).fontSize(11).fontColor(this.muted())
                 }.alignItems(HorizontalAlign.Start).layoutWeight(1)
-                this.iconButton('dots', this.t('remove'), () => { this.confirmRemove = book.id; })
-              }.padding({ top: 14, bottom: 14 }).width('100%').onClick(() => this.selectBook(book))
+              }.padding({ top: 10, bottom: 10 }).width('100%').onClick(() => this.selectBook(book))
+                .backgroundColor(this.selectedBook === book.id ? this.inset() : Color.Transparent)
             }
           }, (book: ShelfBook) => JSON.stringify([book.id, book.title, book.author, book.path, book.cover, book.position.revision, book.position.percentage]))
         }.divider({ strokeWidth: 0.5, color: this.dividerTone() }).layoutWeight(1).width('100%').padding({ left: 24, right: 24 })
       }
-    }.width('100%').height('100%').padding({ top: this.safeTop, bottom: this.safeBottom }).backgroundColor(this.bg()).accessibilityLevel(this.settingsOpen || !!this.confirmRemove ? 'no-hide-descendants' : 'auto')
+      if (this.selectedBook) { this.bookActions() }
+    }.width('100%').height('100%').padding({ top: this.safeTop, bottom: this.safeBottom }).backgroundColor(this.bg()).accessibilityLevel(this.settingsOpen || this.detailsOpen || !!this.confirmRemove ? 'no-hide-descendants' : 'auto')
       .onAreaChange((oldArea: Area, area: Area) => { this.shelfWidth = Number(area.width); })
+  }
+
+  @Builder
+  bookAction(icon: string, label: string, action: () => void) {
+    Button({ type: ButtonType.Normal }) {
+      Column({ space: 3 }) {
+        this.icon(icon, 18)
+        Text(label).fontFamily(this.appFontFamily).fontSize(10).fontColor(icon === 'delete' ? (this.activeDark() ? '#ff9393' : '#e05252') : this.fg())
+      }.width('100%').height(44).justifyContent(FlexAlign.Center)
+    }.layoutWeight(1).padding(0).backgroundColor(Color.Transparent).borderRadius(8).accessibilityText(label).onClick(action).enabled(!this.sharing)
+  }
+
+  @Builder
+  bookActions() {
+    Row({ space: 4 }) {
+      this.bookAction('about', this.t('details'), () => this.showDetails())
+      this.bookAction('share', this.t('share'), () => this.shareSelected(this.selectedBook))
+      this.bookAction('delete', this.t('delete'), () => this.askDelete())
+      Column().width(1).height(24).backgroundColor(this.dividerTone()).margin({ left: 4, right: 4 })
+      Button({ type: ButtonType.Normal }) { this.icon('close', 18) }.width(36).height(44).padding(0).backgroundColor(Color.Transparent).borderRadius(8)
+        .accessibilityText(this.t('cancel')).enabled(!this.sharing).onClick(() => { this.selectedBook = ''; })
+    }.width(292).constraintSize({ maxWidth: '94%' }).height(56).padding({ left: 8, right: 8 }).margin({ top: 8, bottom: 12 }).backgroundColor(this.inset()).borderRadius(12)
+      .border({ width: 0.5, color: this.dividerTone() }).shadow({ radius: 8, offsetY: 2, color: '#14000000' })
+  }
+
+  @Builder
+  detailRow(label: string, value: string) {
+    Column({ space: 4 }) {
+      Text(label).fontFamily(this.appFontFamily).fontSize(13).fontWeight(FontWeight.Medium).fontColor(this.fg()).width('100%')
+      Text(value || this.t('unknown')).fontFamily(this.appFontFamily).fontSize(13).fontColor(this.muted()).width('100%').copyOption(CopyOptions.LocalDevice)
+    }.layoutWeight(1).alignItems(HorizontalAlign.Start)
+  }
+
+  @Builder
+  detailSection(label: string, expanded: boolean, toggle: () => void) {
+    Button({ type: ButtonType.Normal }) {
+      Row() {
+        Text(label).fontFamily(this.appFontFamily).fontSize(15).fontWeight(FontWeight.Medium).fontColor(this.muted()).layoutWeight(1)
+        Text(expanded ? '⌃' : '⌄').fontSize(18).fontColor(this.muted())
+      }.width('100%').height(40)
+    }.width('100%').padding(0).backgroundColor(Color.Transparent).borderRadius(4).onClick(toggle).accessibilityText(label)
+  }
+
+  @Builder
+  bookDetailsPage() {
+    Column() {
+      Row() {
+        Text(this.t('book_details')).fontFamily(this.appFontFamily).fontSize(16).fontWeight(FontWeight.Medium).fontColor(this.fg()).layoutWeight(1)
+        this.iconButton('close', this.t('dismiss'), () => { this.detailsOpen = false; })
+      }.width('100%').padding({ left: 24, right: 12, top: 8, bottom: 8 })
+      Scroll() {
+        Column({ space: 20 }) {
+          Row({ space: 24 }) {
+            if (this.details.cover) { Image(`file://${this.details.cover}`).width(88).height(128).objectFit(ImageFit.Cover).borderRadius(3).shadow({ radius: 6, offsetY: 2, color: '#20000000' }) }
+            else { Column() { this.icon('book', 28) }.width(88).height(128).backgroundColor(this.inset()).justifyContent(FlexAlign.Center).borderRadius(3) }
+            Column({ space: 8 }) {
+              Text(this.details.title).fontFamily(this.appFontFamily).fontSize(18).fontWeight(FontWeight.Bold).fontColor(this.fg()).width('100%').maxLines(3).textOverflow({ overflow: TextOverflow.Ellipsis })
+              Text(this.details.author || this.t('unknown_author')).fontFamily(this.appFontFamily).fontSize(14).fontColor(this.muted()).width('100%').maxLines(2).textOverflow({ overflow: TextOverflow.Ellipsis })
+              Blank().layoutWeight(1)
+              Row({ space: 4 }) {
+                this.iconButton('share', this.t('share'), () => this.shareSelected(this.selectedBook))
+                this.iconButton('delete', this.t('delete'), () => { this.detailsOpen = false; this.askDelete(); })
+              }
+            }.layoutWeight(1).height(128).alignItems(HorizontalAlign.Start)
+          }.width('100%').alignItems(VerticalAlign.Top).padding({ top: 8, bottom: 4 })
+          Column({ space: 16 }) {
+            this.detailSection(this.t('metadata'), this.detailsMetadataExpanded, () => { this.detailsMetadataExpanded = !this.detailsMetadataExpanded; })
+            if (this.detailsMetadataExpanded) {
+            Row({ space: 16 }) { this.detailRow(this.t('publisher'), this.details.publisher); this.detailRow(this.t('published'), this.details.published) }.width('100%').alignItems(VerticalAlign.Top)
+            Row({ space: 16 }) { this.detailRow(this.t('imported_on'), this.details.imported); this.detailRow(this.t('book_language'), this.details.language) }.width('100%').alignItems(VerticalAlign.Top)
+            Row({ space: 16 }) { this.detailRow(this.t('format'), 'EPUB'); this.detailRow(this.t('reading_progress'), this.details.progress) }.width('100%').alignItems(VerticalAlign.Top)
+            Row() { this.detailRow(this.t('filename'), this.details.filename) }.width('100%')
+            if (this.details.identifier) { Row() { this.detailRow(this.t('identifier'), this.details.identifier) }.width('100%') }
+            }
+          }.width('100%').padding({ left: 12, right: 12 })
+          Column({ space: 10 }) {
+            this.detailSection(this.t('description'), this.detailsDescriptionExpanded, () => { this.detailsDescriptionExpanded = !this.detailsDescriptionExpanded; })
+            if (this.detailsDescriptionExpanded) {
+              Text(this.details.description || this.t('no_description')).fontFamily(this.appFontFamily).fontSize(14).fontColor(this.muted()).width('100%').copyOption(CopyOptions.LocalDevice)
+            }
+          }.width('100%').padding({ left: 12, right: 12, top: 4, bottom: 12 })
+        }.width('100%').padding({ left: 24, right: 24, bottom: 24 })
+      }.layoutWeight(1).width('100%')
+    }.width('92%').height('80%').constraintSize({ maxWidth: 480, maxHeight: 640 }).backgroundColor(this.bg()).borderRadius(16).clip(true)
+      .shadow({ radius: 24, color: '#33000000' })
   }
 
   @Builder
@@ -1035,9 +1213,15 @@ struct Index {
         .onConsole((event) => { hilog.info(0x0000, 'HarmonyReader', '%{public}s', event.message.getMessage().slice(0, 500)); return false; })
         .width('100%').layoutWeight(1).accessibilityLevel(this.settingsOpen || this.conflict ? 'no-hide-descendants' : 'auto')
       }.width('100%').height('100%')
-      if (!this.reading) { this.library() }
+      if (!this.reading) {
+        if (this.appearanceReady) { this.library() }
+        else { Column().width('100%').height('100%').backgroundColor(this.bg()) }
+      }
       else {
-        if (this.error) { Column() { this.notice() }.padding(16).align(Alignment.Top).margin({ top: 60 + this.safeTop }) }
+        if (this.error) {
+          Column() { this.notice() }.width('100%').padding({ left: 16, right: 16, top: 8 })
+            .position({ x: 0, y: 44 + this.safeTop })
+        }
         if (this.conflict) {
           Column().width('100%').height('100%').backgroundColor('#80000000')
           Column({ space: 10 }) {
@@ -1048,35 +1232,13 @@ struct Index {
           }.padding(24).width('92%').constraintSize({ maxWidth: 560 }).backgroundColor(this.bg()).borderRadius(16).shadow({ radius: 24, color: '#33000000' })
         }
       }
-      if (this.viewMenu && !this.reading) {
-        Column({ space: 4 }) {
-          Text(this.t('view_options')).fontFamily(this.appFontFamily).fontSize(12).fontColor(this.muted()).width('100%').padding({ left: 12, top: 8, bottom: 8 })
-          ForEach(['grid', 'list'], (mode: string) => {
-            Button({ type: ButtonType.Normal }) {
-              Row({ space: 12 }) {
-                this.icon(mode, 18)
-                Text(this.t(`view_${mode}`)).fontFamily(this.appFontFamily).fontSize(14).fontColor(this.fg()).layoutWeight(1)
-                if (this.viewMode === mode) { Text('✓').fontFamily(this.appFontFamily).fontSize(14).fontColor(this.fg()) }
-              }.width('100%').padding(12)
-            }.width('100%').height(44).backgroundColor(this.viewMode === mode ? this.inset() : Color.Transparent).borderRadius(8)
-              .onClick(() => { this.viewMode = mode; this.viewMenu = false; })
-          })
-          this.rule()
-          ForEach(['recent', 'title'], (sort: string) => {
-            Button({ type: ButtonType.Normal }) {
-              Row() {
-                Text(this.t(`sort_${sort}`)).fontFamily(this.appFontFamily).fontSize(14).fontColor(this.fg()).layoutWeight(1)
-                if (this.sortBy === sort) { Text('✓').fontFamily(this.appFontFamily).fontSize(14).fontColor(this.fg()) }
-              }.width('100%').padding(12)
-            }.width('100%').height(44).backgroundColor(this.sortBy === sort ? this.inset() : Color.Transparent).borderRadius(8)
-              .onClick(() => { this.sortBy = sort; this.updateShelf(); this.viewMenu = false; })
-          })
-        }.width(220).padding(8).backgroundColor(this.surface()).borderRadius(12).border({ width: 1, color: this.dividerTone() })
-          .shadow({ radius: 12, color: '#20000000' }).align(Alignment.TopEnd).margin({ top: 56 + this.safeTop, right: 16 })
-      }
       if (this.settingsOpen) {
         Column().width('100%').height('100%').backgroundColor('#80000000').onClick(() => { this.settingsOpen = false; })
         this.settingsPage()
+      }
+      if (this.detailsOpen) {
+        Column().width('100%').height('100%').backgroundColor('#80000000').onClick(() => { this.detailsOpen = false; })
+        this.bookDetailsPage()
       }
       if (this.fontPicker) {
         Column().width('100%').height('100%').backgroundColor('#80000000').onClick(() => { this.fontPicker = ''; })
@@ -1097,17 +1259,21 @@ struct Index {
       if (this.confirmRemove) {
         Column().width('100%').height('100%').backgroundColor('#80000000').onClick(() => { this.confirmRemove = ''; })
         Column({ space: 18 }) {
-          Text(this.t('remove_description')).fontFamily(this.appFontFamily).fontSize(17).fontColor(this.fg())
-          Row({ space: 12 }) { Button(this.t('cancel')).onClick(() => { this.confirmRemove = ''; })
-            Button(this.t('remove')).backgroundColor('#913d35').onClick(() => { const book = this.app!.books.find((item: BookRecord) => item.id === this.confirmRemove);
-              if (book) this.run(() => this.app!.remove(book)); this.confirmRemove = ''; }) }
-          if (this.app?.cloudEnabled()) {
-            Button(this.t('remove_cloud_book')).backgroundColor('#913d35').fontColor('#ffffff').onClick(() => {
-              const book = this.app!.books.find((item: BookRecord) => item.id === this.confirmRemove);
-              if (book) this.run(() => this.app!.removeCloud(book)); this.confirmRemove = '';
-            })
-            Text(this.t('remove_cloud_description')).fontFamily(this.appFontFamily).fontSize(12).fontColor(this.muted())
+          Text(this.t('delete')).fontFamily(this.appFontFamily).fontSize(17).fontWeight(FontWeight.Medium).fontColor(this.fg())
+          Text(this.t(this.deleteCloud ? 'remove_cloud_description' : 'remove_description')).fontFamily(this.appFontFamily).fontSize(14).fontColor(this.muted())
+          if (this.app?.cloudEnabled() && !!this.app?.books.find((item: BookRecord) => item.id === this.confirmRemove)?.cloudBook) {
+            Row({ space: 12 }) {
+              Text(this.t('remove_cloud_book')).fontFamily(this.appFontFamily).fontSize(13).fontColor(this.fg()).layoutWeight(1)
+              Toggle({ type: ToggleType.Switch, isOn: this.deleteCloud }).selectedColor(this.primary()).onChange((value: boolean) => { this.deleteCloud = value; })
+            }.width('100%')
           }
+          Row({ space: 12 }) { Button(this.t('cancel')).onClick(() => { this.confirmRemove = ''; })
+            Button(this.t('delete')).backgroundColor('#913d35').fontColor('#ffffff').onClick(() => {
+              const book = this.app!.books.find((item: BookRecord) => item.id === this.confirmRemove);
+              const cloud = this.deleteCloud;
+              if (book) this.run(() => cloud ? this.app!.removeCloud(book) : this.app!.remove(book));
+              this.confirmRemove = ''; this.selectedBook = '';
+            }) }
         }.padding(24).width('90%').constraintSize({ maxWidth: 480 }).backgroundColor(this.bg()).borderRadius(16)
       }
       if (this.busy && this.reading) {

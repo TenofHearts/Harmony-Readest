@@ -9,13 +9,15 @@ Sync settings use collapsible Readest and KOReader service cards. Connected card
 ## First release
 
 - Import reflowable EPUBs, extract covers and metadata, and resume saved positions offline.
+- Hold a book cover for one second to open the compact bottom action bar. View cover and EPUB metadata in a floating details page, share the EPUB through the HarmonyOS system share panel, or delete it with confirmation. Cloud-only books download before sharing.
+- Bookmark the current page and select text to highlight it in five colors. Browse, jump to, or delete bookmarks and highlights in the Annotations panel. Both persist locally across reopening and app restarts.
 - Use the table of contents, tap/swipe page turns, progress slider, and paginated or scrolled reading.
 - Font settings follow Readest's grouped controls: book-font override, default/minimum size, weight, serif/sans-serif/monospace families, CJK fallback, and custom font management. Font choices preview their own typeface; selecting a family enables the book-font override and applies the preferred family to the shelf, settings and reader controls. Import local TTF/OTF files up to 32 MiB each; installed fonts work offline.
 - Adjust paragraph margins, line/word/letter spacing, indentation, justification and hyphenation. Use Book Layout restores publisher paragraph styling. Page settings include four margins, additional margin, column gap, maximum columns and column dimensions; system safe areas remain reserved for text.
 - Sign in with an existing Readest email/password account to synchronize the EPUB library, files, covers, positions and per-book font/layout settings. Cloud books download when opened and are verified against their content hash. TTF/OTF custom fonts use the replica protocol, with an independent category switch. Manual sync, incremental pulls, retry and storage refresh are available.
 - Choose Readest's 11 built-in color schemes with Light, Dark, or System mode independently for the shelf and reader. Existing theme and typography preferences migrate on upgrade. Custom schemes and other theme features remain deferred.
 - Fill the screen with a themed background, including the status and gesture areas, while keeping controls and text clear of system indicators. The launcher and splash screen use Readest's official icon artwork; the displayed app name is Readest.
-- Configure an existing KoSync account and HTTPS server. Like Readest's prompt mode, check remote progress on book open and app return, and let the user choose when positions differ. Uploads pause until that choice. Reading changes upload after five seconds, including backwards reading; manual Send progress and Check remote are available.
+- Configure an existing KoSync account and HTTPS server. Like Readest's prompt mode, check remote progress on book open and app return, and let the user choose when positions differ. Uploads pause until that choice. Reading changes upload after five seconds, including backwards reading. The reader menu groups Theme, Font & Layout, Settings, Share Book and one Sync action that refreshes the library and reconciles progress through the configured services.
 - With both services enabled, Readest supplies the resume position, falling back to KoSync when Readest has none. The chosen position is sent to both services. Differing positions require a choice; an unresolvable remote locator pauses automatic uploads.
 - Choose English, Simplified Chinese, or System in settings; the choice persists across restarts.
 
@@ -23,7 +25,7 @@ KoSync transfers **positions only**. Import the same EPUB into Readest and Harmo
 
 The default server is `https://sync.koreader.rocks/`, matching [Readest's default](https://github.com/readest/readest/blob/main/apps/readest-app/src/services/constants.ts). Readest leaves KoSync disabled with empty credentials until configured. Use the same KoSync username and password in both apps; these are separate from Readest cloud credentials. This app connects to an existing account and does not register one.
 
-PDF, fixed-layout EPUB, DRM, annotations, search, OPDS and TTS are deferred. The Readest card exposes the data this reader implements. App language, color themes and preferred font families remain device-local and take precedence when opening a book; per-book text size and layout settings synchronize. Import limits are 128 MiB compressed / 512 MiB expanded. App backup/restore is disabled so device-bound credential storage is not backed up. Files survive app restarts but not uninstall or clearing app data.
+PDF, fixed-layout EPUB, DRM, annotation cloud sync, notes, search, OPDS and TTS are deferred. The Readest card exposes the data this reader implements. App language, color themes, bookmarks, highlights and preferred font families remain device-local; language, themes and font families take precedence when opening a book. Per-book text size and layout settings synchronize. Import limits are 128 MiB compressed / 512 MiB expanded. App backup/restore is disabled so device-bound credential storage is not backed up. Files survive app restarts but not uninstall or clearing app data.
 
 ## Build
 

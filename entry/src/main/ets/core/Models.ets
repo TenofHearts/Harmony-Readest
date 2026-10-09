@@ -22,6 +22,7 @@ export class BookMetadata {
 }
 
 export class BookRecord {
+  annotations: BookAnnotation[] = [];
   metadataJSON: string = '';
   id: string = '';
   title: string = '';
@@ -45,6 +46,17 @@ export class BookRecord {
   style: ReaderSettings | null = null;
   styleUpdatedAt: number = 0;
   styleDirty: boolean = false;
+}
+
+export class BookAnnotation {
+  id: string = '';
+  kind: string = 'bookmark';
+  cfi: string = '';
+  text: string = '';
+  chapter: string = '';
+  percentage: number = 0;
+  color: string = '#fff176';
+  createdAt: number = 0;
 }
 
 export class ThemeSettings {
@@ -142,6 +154,7 @@ export interface RemoteProgress {
 }
 
 export class ReaderCommand {
+  annotations?: BookAnnotation[];
   version: number = 1;
   session: string = '';
   type: string = '';
@@ -169,6 +182,7 @@ export class ReaderChromeState {
 }
 
 export interface ReaderEvent {
+  annotations?: BookAnnotation[];
   version: number;
   session: string;
   type: string;

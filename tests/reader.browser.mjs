@@ -62,6 +62,10 @@ try {
   const command = async cmd => {
     await page.evaluate(async c => { window.readerReceive(c); await window.readerTest.idle(); }, { version: 1, session: 'alice', ...cmd });
   };
+  const openMenuPanel = async action => {
+    await page.locator('.header-bar [data-action="menu"]').click();
+    await page.locator(`.view-menu [data-action="${action}"]`).click();
+  };
   const externalRequests = [];
   page.on('request', req => { if (!req.url().startsWith(origin) && !req.url().startsWith('blob:')) externalRequests.push(req.url()); });
   await command({ type: 'open', url: `${origin}/books/alice.epub`, metadataOnly: true });
@@ -102,20 +106,32 @@ try {
   const phoneBounds = await page.locator('foliate-view').boundingBox();
   await page.locator('.mobile-tools [data-action="progress"]').click();
   assert.equal(await page.locator('[data-panel="progress"]').getAttribute('aria-hidden'), 'false');
+  const assertPageProgress = async () => {
+    const expected = await page.evaluate(() => {
+      const { current, total } = window.readerTest.getView().lastLocation.location;
+      return `${Math.min(total, current + 1)} / ${total}`;
+    });
+    assert.equal(await page.locator('[data-panel="progress"] .page-progress').textContent(), expected);
+    assert.equal(await page.locator('.desktop-tools .page-progress').textContent(), expected);
+    assert.equal(await page.locator('[data-action="historyBack"], [data-action="historyForward"]').count(), 0);
+  };
+  await assertPageProgress();
   await page.waitForTimeout(200);
   await page.screenshot({ path: 'output/playwright/reader-progress-panel.png' });
   await page.locator('[data-panel="progress"] [data-action="next"]').click();
   await page.evaluate(() => window.readerTest.idle());
   assert.notEqual(await page.evaluate(() => window.readerTest.getView().lastLocation.cfi), firstCFI);
+  await assertPageProgress();
+  report.tests.push('Phone and tablet progress controls show Foliate current/total pages after page turns, with no history arrow buttons');
   await command({ type: 'restore', cfi: firstCFI, requestId: 'chrome-reset' });
   await command({ type: 'back' });
-  await page.locator('.mobile-tools [data-action="font"]').click();
+  await openMenuPanel('font');
   await page.locator('[data-action="increase"]').click();
   await page.evaluate(() => window.readerTest.idle());
   assert.equal(await page.locator('[data-font-size]').textContent(), '22');
   assert.equal(await page.evaluate(() => window.events.filter(e => e.type === 'appearanceChanged').at(-1).settings.fontSize), 22);
   await command({ type: 'back' });
-  await page.locator('.mobile-tools [data-action="color"]').click();
+  await openMenuPanel('color');
   assert.equal(await page.locator('[data-theme]').count(), 11);
   await page.locator('[data-mode="dark"]').click();
   await page.evaluate(() => window.readerTest.idle());
@@ -155,10 +171,14 @@ try {
   assert.equal(await page.locator('[data-panel="toc"]').getAttribute('aria-hidden'), 'true');
   await page.locator('[data-action="menu"]').click();
   await command({ type: 'chrome', chrome: { controls: true, syncEnabled: false, status: 'Offline ready' } });
-  assert.equal(await page.locator('[data-action="upload"]').isDisabled(), true);
+  assert.equal(await page.locator('[data-action="sync"]').isDisabled(), true);
   await command({ type: 'chrome', chrome: { controls: true, syncEnabled: true, status: 'Progress synced' } });
-  await page.locator('[data-action="upload"]').click();
-  assert.equal(await page.evaluate(() => window.events.filter(e => e.type === 'readerAction').at(-1).action), 'upload');
+  await page.locator('[data-action="sync"]').click();
+  assert.equal(await page.evaluate(() => window.events.filter(e => e.type === 'readerAction').at(-1).action), 'sync');
+  assert.equal(await page.locator('[data-action="upload"],[data-action="reconcile"]').count(), 0);
+  assert.equal(await page.locator('.header-bar [data-action="font"],.header-bar [data-action="color"],.mobile-tools [data-action="font"],.mobile-tools [data-action="color"]').count(), 0);
+  await page.locator('[data-action="menu"]').click(); await page.locator('[data-action="share"]').click();
+  assert.equal(await page.evaluate(() => window.events.filter(e => e.type === 'readerAction').at(-1).action), 'share');
   await command({ type: 'chrome', chrome: { controls: false, syncEnabled: true } });
   await page.waitForTimeout(350);
   assert.equal(await page.locator('.header-bar').evaluate(el => getComputedStyle(el).opacity), '0');
@@ -289,7 +309,7 @@ try {
   const cdp = await page.context().newCDPSession(page);
   await command({ type: 'chrome', chrome: { controls: true } });
   const panel = page.locator('[data-panel="font"]');
-  await page.locator('.header-bar [data-action="font"]').click();
+  await openMenuPanel('font');
   await page.waitForTimeout(200);
   const closeButton = panel.locator('[data-action="close"]');
   const closeBounds = await closeButton.boundingBox();
@@ -306,13 +326,13 @@ try {
   assert.equal(await page.evaluate(() => window.readerTest.getView().lastLocation.cfi), startCFI, 'Floating settings block keyboard, bridge, wheel and real touch page turns');
   if (await panel.getAttribute('aria-hidden') === 'false') await closeButton.click();
   for (const x of [100, 1050, 590]) {
-    await page.locator('.header-bar [data-action="font"]').click();
+    await openMenuPanel('font');
     await page.waitForTimeout(200);
     await page.mouse.click(x, x === 590 ? 60 : 250);
     assert.equal(await panel.getAttribute('aria-hidden'), 'true', 'An outside tap dismisses settings');
     assert.equal(await page.evaluate(() => window.readerTest.getView().lastLocation.cfi), startCFI, 'Dismissal does not also turn the page');
   }
-  await page.locator('.header-bar [data-action="font"]').click();
+  await openMenuPanel('font');
   await page.waitForTimeout(200);
   await panel.locator('.panel-scroll').evaluate(el => { el.scrollTop = el.scrollHeight; });
   await page.screenshot({ path: 'output/playwright/reader-fixed-close-tablet.png' });
@@ -415,7 +435,7 @@ try {
     const style = doc.defaultView.getComputedStyle(p); return { family: style.fontFamily, size: style.fontSize, margin: style.marginTop };
   });
   assert.equal(publisher.family, 'Georgia'); assert.equal(publisher.size, '12px'); assert.equal(publisher.margin, '3px');
-  await page.locator('.mobile-tools [data-action="font"]').click();
+  await openMenuPanel('font');
   await page.waitForTimeout(200);
   const phoneClose = page.locator('[data-panel="font"] [data-action="close"]');
   const phoneCloseBounds = await phoneClose.boundingBox();
@@ -439,7 +459,7 @@ try {
   assert.equal(await page.evaluate(() => window.readerTest.getSettings().serifFont), 'serif', 'Font previews load before selection');
   await page.screenshot({ path: 'output/playwright/reader-font-previews-phone.png' });
   await phoneClose.click();
-  await page.locator('.mobile-tools [data-action="font"]').click();
+  await openMenuPanel('font');
   assert.equal(await page.locator('#options-serifFont').isVisible(), false, 'Closing settings resets the expanded font list');
   await page.locator('[data-font-picker="serifFont"]').click();
   await page.keyboard.press('Home'); await page.keyboard.press('ArrowDown'); await page.keyboard.press('Enter');
@@ -538,8 +558,118 @@ try {
   for (const type of ['next', 'previous', 'next']) await command({ session: 'cached', type });
   assert.equal(await page.evaluate(() => window.chapterParses), 0, 'Page turns reuse the canonical chapter document');
   assert.ok(await page.evaluate(() => window.events.filter(e => e.session === 'cached' && e.type === 'position').at(-1).position.xpointer));
+  await page.setViewportSize({ width: 412, height: 780 });
+  await page.waitForTimeout(200);
+  await command({ session: 'cached', type: 'chrome', chrome: { controls: true } });
+  const annotationStart = await page.evaluate(() => window.readerTest.getView().lastLocation.cfi);
+  await page.locator('.mobile-tools [data-action="bookmark"]').click(); await page.evaluate(() => window.readerTest.idle());
+  assert.equal(await page.locator('.mobile-tools [data-action="bookmark"]').getAttribute('aria-pressed'), 'true');
+  await page.locator('.mobile-tools [data-action="bookmark"]').click(); await page.evaluate(() => window.readerTest.idle());
+  assert.equal(await page.locator('.mobile-tools [data-action="bookmark"]').getAttribute('aria-pressed'), 'false');
+  await page.locator('.mobile-tools [data-action="bookmark"]').click(); await page.evaluate(() => window.readerTest.idle());
+  await command({ session: 'cached', type: 'previous' });
+  assert.equal(await page.locator('.mobile-tools [data-action="bookmark"]').getAttribute('aria-pressed'), 'false');
+  await page.locator('.mobile-tools [data-action="highlights"]').click();
+  await page.locator('[data-annotation-tab="bookmark"]').click();
+  assert.equal(await page.locator('[data-annotation-tab="bookmark"]').getAttribute('aria-selected'), 'true');
+  assert.equal(await page.locator('[data-annotation]').count(), 1);
+  await page.locator('[data-annotation]').click(); await page.evaluate(() => window.readerTest.idle());
+  assert.equal(await page.locator('.mobile-tools [data-action="bookmark"]').getAttribute('aria-pressed'), 'true');
+  assert.equal(await page.evaluate(() => window.readerTest.getView().lastLocation.cfi), annotationStart);
+  const selectPassage = async () => page.evaluate(() => {
+    const { doc } = window.readerTest.getView().renderer.getContents()[0];
+    const frame = doc.defaultView.frameElement.getBoundingClientRect();
+    const word = [...doc.querySelectorAll('[data-word]')].find(element => {
+      const bounds = element.getBoundingClientRect();
+      return bounds.left + frame.left >= 0 && bounds.right + frame.left <= innerWidth && bounds.top + frame.top > 80 && bounds.bottom + frame.top < innerHeight - 80;
+    });
+    if (!word) throw Error('No visible annotation text');
+    const range = doc.createRange(); range.selectNodeContents(word);
+    const selection = doc.getSelection(); selection.removeAllRanges(); selection.addRange(range);
+    doc.dispatchEvent(new Event('selectionchange'));
+  });
+  await selectPassage();
+  assert.equal(await page.locator('.selection-bar').isVisible(), true);
+  await page.waitForTimeout(200);
+  await page.screenshot({ path: 'output/playwright/reader-highlight-selection.png' });
+  await page.locator('[data-highlight-color="#fff176"]').click(); await page.evaluate(() => window.readerTest.idle());
+  assert.equal(await page.locator('.selection-bar').isVisible(), false);
+  assert.ok(await page.evaluate(() => window.readerTest.getView().renderer.getContents().some(item => item.overlayer.element.querySelector('g[fill="#fff176"]'))));
+  await selectPassage(); await page.locator('[data-highlight-color="#90caf9"]').click(); await page.evaluate(() => window.readerTest.idle());
+  const savedAnnotations = await page.evaluate(() => window.events.filter(e => e.session === 'cached' && e.type === 'annotationsChanged').at(-1).annotations);
+  assert.equal(savedAnnotations.length, 2); assert.equal(savedAnnotations.find(item => item.kind === 'highlight').color, '#90caf9');
+  assert.match(savedAnnotations.find(item => item.kind === 'highlight').text, /^word\d+/);
+  const highlightsBeforeStale = savedAnnotations.length;
+  await command({ session: 'other-book', type: 'bookmark' });
+  assert.equal(await page.evaluate(() => window.events.filter(e => e.type === 'annotationsChanged').at(-1).annotations.length), highlightsBeforeStale);
+  await command({ session: 'cached', type: 'open', url: `${origin}/books/continuous.epub`, cfi: annotationStart, annotations: savedAnnotations });
+  assert.equal(await page.locator('.mobile-tools [data-action="bookmark"]').getAttribute('aria-pressed'), 'true');
+  await page.waitForFunction(() => window.readerTest.getView().renderer.getContents().some(item => item.overlayer.element.querySelector('g[fill="#90caf9"]')));
+  await page.locator('.mobile-tools [data-action="highlights"]').click(); await page.locator('[data-annotation-tab="highlight"]').click();
+  assert.equal(await page.locator('[data-annotation-tab="highlight"]').getAttribute('aria-selected'), 'true');
+  assert.equal(await page.locator('[data-annotation]').count(), 1);
+  await page.waitForTimeout(200);
+  const annotationTools = await page.locator('.mobile-tools').evaluate(element => {
+    const bounds = element.getBoundingClientRect();
+    const button = element.querySelector('button'), buttonBounds = button.getBoundingClientRect();
+    const target = document.elementFromPoint(buttonBounds.left + buttonBounds.width / 2, buttonBounds.top + buttonBounds.height / 2);
+    return { top: bounds.top, bottom: bounds.bottom, height: bounds.height, viewport: innerHeight,
+      accessible: !!target?.closest('.mobile-tools'), target: target?.outerHTML.slice(0, 250) };
+  });
+  assert.ok(annotationTools.height > 0 && annotationTools.bottom <= annotationTools.viewport, `Annotation controls stay on screen: ${JSON.stringify(annotationTools)}`);
+  assert.equal(annotationTools.accessible, true, `Annotation panel cannot cover toolbar buttons: ${JSON.stringify(annotationTools)}`);
+  await page.screenshot({ path: 'output/playwright/reader-highlights-phone.png' });
+  await page.locator('[data-remove-annotation]').click(); await page.evaluate(() => window.readerTest.idle());
+  assert.equal(await page.locator('[data-annotation]').count(), 0);
+  assert.equal(await page.evaluate(() => window.readerTest.getView().renderer.getContents().some(item => item.overlayer.element.querySelector('g[fill="#90caf9"]'))), false);
+  await command({ session: 'cached', type: 'back' });
+  await page.locator('[data-action="menu"]').click();
+  await page.waitForTimeout(200);
+  await page.screenshot({ path: 'output/playwright/reader-menu-phone.png' });
+  await page.setViewportSize({ width: 1180, height: 780 });
+  await page.waitForTimeout(200);
+  await page.screenshot({ path: 'output/playwright/reader-menu-tablet.png' });
+  assert.equal(await page.locator('.header-bar [data-action="bookmark"]').isVisible(), true);
+  await page.locator('[data-action="share"]').click();
+  assert.equal(await page.evaluate(() => window.events.filter(e => e.type === 'readerAction').at(-1).action), 'share');
+  report.tests.push('Bookmarks toggle and navigate; highlights capture selected text, recolor, render, survive reopening, delete, and reject stale sessions; phone/tablet menus contain Theme, Font & Layout, Share and one Sync action');
   await command({ session: 'cached', type: 'close' });
   report.tests.push('Reopen applies native settings with a new session; custom fonts render in chrome and font items; page turns reuse canonical chapter documents and close releases the renderer');
+  const startup = await browser.newPage({ viewport: { width: 1180, height: 780 } });
+  startup.on('pageerror', error => report.consoleErrors.push(error.message));
+  await startup.addInitScript(() => {
+    if (window !== window.top) return;
+    window.events = []; window.HarmonyReader = { post: value => window.events.push(JSON.parse(value)) };
+    const ready = Object.getOwnPropertyDescriptor(FontFaceSet.prototype, 'ready').get;
+    const gate = new Promise(resolve => { window.releaseStartupFonts = resolve; });
+    Object.defineProperty(document.fonts, 'ready', { configurable: true, get() {
+      window.startupFontsPending = true;
+      return Promise.all([ready.call(this), gate]);
+    } });
+  });
+  await startup.goto(`${origin}/reader/index.html`);
+  await startup.waitForFunction(() => window.readerTest && window.events.some(e => e.type === 'ready'));
+  await startup.evaluate(origin => {
+    window.readerReceive({ version: 1, session: 'startup', type: 'fonts',
+      fonts: [{ family: 'Startup Font', style: 'normal', weight: '400', url: `${origin}/fonts/test.ttf` }] });
+    window.readerReceive({ version: 1, session: 'startup', type: 'open', url: `${origin}/books/styled.epub`,
+      settings: { serifFont: 'Startup Font', overrideFont: true } });
+  }, origin);
+  await startup.waitForFunction(() => window.startupFontsPending);
+  assert.equal(await startup.locator('foliate-view').evaluate(el => getComputedStyle(el).opacity), '0');
+  assert.equal(await startup.locator('#reader-chrome').isVisible(), false);
+  assert.equal(await startup.evaluate(() => window.events.some(e => e.type === 'opened')), false);
+  await startup.evaluate(async () => { window.releaseStartupFonts(); await window.readerTest.idle(); });
+  const firstVisible = await startup.evaluate(() => {
+    const view = window.readerTest.getView(), doc = view.renderer.getContents()[0].doc;
+    return { opacity: getComputedStyle(view).opacity, inert: view.inert,
+      chapter: doc.fonts.check('20px "Startup Font"'), chrome: document.fonts.check('14px "Startup Font"'),
+      family: doc.defaultView.getComputedStyle(doc.querySelector('#copy')).fontFamily };
+  });
+  assert.deepEqual(firstVisible, { opacity: '1', inert: false, chapter: true, chrome: true, family: '"Startup Font", serif' });
+  assert.equal(await startup.locator('#reader-chrome').isVisible(), true);
+  await startup.close();
+  report.tests.push('Cold reader open with delayed font readiness keeps text and controls hidden until configured chapter/chrome fonts load, then reveals them together');
   assert.deepEqual(report.consoleErrors, []);
   await mkdir('output/playwright', { recursive: true });
   await writeFile('output/playwright/browser-results.json', JSON.stringify(report, null, 2));

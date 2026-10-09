@@ -6,6 +6,8 @@ import { BlobReader, BlobWriter, TextWriter, ZipReader, configure } from '@zip.j
 import { partialMD5 } from '../../vendor/readest/apps/readest-app/src/utils/md5';
 import { getCFIFromXPointer, getXPointerFromCFI, XCFI } from '../../vendor/readest/apps/readest-app/src/utils/xcfi';
 import { createChrome } from './chrome';
+import { Overlayer } from '../../vendor/foliate-js/overlayer.js';
+import { type Annotation, highlightColors, onPage } from './annotations';
 import { palette, themeIsDark } from './palette';
 import { defaultTypography, typographyStyles, fontFaceStyles, builtinFontFamilies, enforceMinimumFont, restoreMinimumFont, type ReaderFont } from './typography';
 declare const __READER_TEST__: boolean;
@@ -22,6 +24,8 @@ let book: any;
 let archive: ZipReader<any> | undefined;
 let suppress = 0;
 let lastPosition: any;
+let annotations: Annotation[] = [];
+let selectedText: { cfi: string; text: string; doc: Document } | undefined;
 let eventQueue = Promise.resolve();
 const locatorDocuments = new Map<number, Document>();
 let userActionUntil = 0;
@@ -38,6 +42,13 @@ async function loadSelectedFonts() {
     fontSources.set(face.url, URL.createObjectURL(await response.blob()));
   }
 }
+async function readyFonts(doc: Document) {
+  const selected = [settings.defaultFont === 'sans-serif' ? settings.sansSerifFont : settings.serifFont, settings.monospaceFont, settings.defaultCJKFont];
+  const families = selected.filter(Boolean).map(name => builtinFontFamilies[name] && fonts.some(face => face.family === builtinFontFamilies[name]) ? builtinFontFamilies[name] : name);
+  if (doc !== document && settings.defaultCJKFont) families.push('Readest CJK');
+  await Promise.all([...new Set(families)].map(family => doc.fonts.load(`${settings.fontWeight} ${settings.fontSize}px ${JSON.stringify(family)}`, 'Reading 阅读')));
+  await doc.fonts.ready;
+}
 let safeTop = 0, safeBottom = 0;
 const systemMedia = window.matchMedia('(prefers-color-scheme: dark)');
 let nativeSystemDark: boolean | undefined;
@@ -45,6 +56,8 @@ const systemDark = () => nativeSystemDark ?? systemMedia.matches;
 const chrome = createChrome({ emit, getView: () => view, getSettings: () => settings,
   getSystemDark: systemDark,
   getFonts: () => fonts,
+  getAnnotations: () => annotations,
+  isBookmarked: () => annotations.some(item => item.kind === 'bookmark' && onPage(item.cfi, lastPosition?.cfi || '')),
   command: command => (window as any).readerReceive({ version: 1, session, ...command, fromChrome: true }) });
 systemMedia.addEventListener('change', () => appearance());
 const unsafeURL = (value: string) => /^(?:https?:|ftp:|javascript:|\/\/)/i.test(value.trim());
@@ -141,6 +154,18 @@ function appearance() {
 }
 
 function bindGestures(doc: Document) {
+  if (doc !== document) doc.addEventListener('selectionchange', () => {
+    const selection = doc.getSelection();
+    if (!selection?.rangeCount || selection.isCollapsed || !selection.toString().trim()) {
+      if (selectedText?.doc === doc) { selectedText = undefined; chrome.selection(false); }
+      return;
+    }
+    const content = view?.renderer?.getContents().find((item: any) => item.doc === doc);
+    if (!content || chrome.hasOverlay()) return;
+    const range = selection.getRangeAt(0);
+    selectedText = { cfi: view.getCFI(content.index, range), text: selection.toString().slice(0, 16384), doc };
+    chrome.selection(true);
+  });
   let downX = 0, downY = 0, downAt = 0;
   const point = (event: PointerEvent) => {
     const frame = doc.defaultView?.frameElement?.getBoundingClientRect();
@@ -190,7 +215,7 @@ async function snapshot(location: any, capturedSession: string, restored: boolea
   if (capturedSession !== session) return;
   const fraction = Math.max(0, Math.min(1, location.fraction ?? 0));
   lastPosition = { cfi: location.cfi, xpointer, percentage: fraction, chapter: simpleText(location.tocItem?.label) };
-  chrome.position(lastPosition);
+  chrome.position({ ...lastPosition, location: location.location });
   emit('position', { position: lastPosition, restored });
 }
 
@@ -199,6 +224,7 @@ async function close() {
   restoreMinimumFont();
   locatorDocuments.clear();
   chrome.close();
+  selectedText = undefined; annotations = [];
   view?.close(); view?.remove(); view = undefined;
   book?.destroy?.(); book = undefined;
   await archive?.close(); archive = undefined;
@@ -209,6 +235,7 @@ async function close() {
 async function open(command: any) {
   await close();
   session = command.session;
+  annotations = Array.isArray(command.annotations) ? command.annotations : [];
   if (command.settings) { settings = { ...defaultTypography, ...command.settings }; await loadSelectedFonts(); }
   suppress++;
   try {
@@ -232,10 +259,21 @@ async function open(command: any) {
     // depend on an iframe loading or a hidden renderer producing a page.
     if (command.metadataOnly) { emit('opened'); return; }
     view = document.createElement('foliate-view');
+    // Opacity gates the whole subtree: Foliate temporarily makes iframe contents
+    // visible while measuring them, so inherited visibility is insufficient.
+    view.style.opacity = '0'; view.inert = true;
     document.body.append(view);
     view.addEventListener('load', ({ detail: { doc } }: any) => { bindGestures(doc); enforceMinimumFont(doc, settings.minimumFontSize); });
     view.addEventListener('external-link', (event: Event) => event.preventDefault());
     view.addEventListener('link', () => { userActionUntil = Date.now() + 1500; });
+    view.addEventListener('draw-annotation', ({ detail: { draw, annotation } }: any) => {
+      draw(Overlayer.highlight, { color: annotation.color });
+    });
+    view.addEventListener('create-overlay', ({ detail: { index } }: any) => {
+      for (const item of annotations.filter(item => item.kind === 'highlight')) {
+        try { if (view.resolveCFI(item.cfi)?.index === index) void view.addAnnotation({ value: item.cfi, color: item.color }); } catch {}
+      }
+    });
     await view.open(book);
     view.renderer.addEventListener('relocate', (event: CustomEvent) => {
       const captured = session;
@@ -259,9 +297,46 @@ async function open(command: any) {
     chrome.open(simpleText(book.metadata.title), flattenTOC(book.toc ?? []));
     appearance();
     await view.init({ lastLocation: command.cfi || undefined });
+    await Promise.all([readyFonts(document), ...view.renderer.getContents().map(({ doc }: { doc: Document }) => readyFonts(doc))]);
+    // Font decoding can change pagination. Restore the requested anchor after
+    // the font-ready expansion, before exposing any text or reader controls.
+    if (command.cfi) await view.goTo(command.cfi);
     await eventQueue;
+    view.style.opacity = '1'; view.inert = false; chrome.reveal();
     emit('opened');
   } finally { suppress--; }
+}
+
+function annotationsChanged() {
+  chrome.annotationsChanged();
+  emit('annotationsChanged', { annotations });
+}
+
+async function annotate(command: any) {
+  await eventQueue;
+  if (!view || !lastPosition) return;
+  if (command.type === 'bookmark') {
+    const existing = annotations.filter(item => item.kind === 'bookmark' && onPage(item.cfi, lastPosition.cfi));
+    if (existing.length) annotations = annotations.filter(item => !existing.includes(item));
+    else if (annotations.length < 2000) annotations.push({ id: crypto.randomUUID(), kind: 'bookmark', cfi: lastPosition.cfi,
+      text: view.lastLocation?.range?.startContainer?.textContent?.slice(0, 128) || lastPosition.chapter,
+      chapter: lastPosition.chapter.slice(0, 1024), percentage: lastPosition.percentage, color: highlightColors[0], createdAt: Date.now() });
+  } else if (command.type === 'highlight') {
+    if (!selectedText || !highlightColors.includes(command.color) || annotations.length >= 2000) return;
+    const selected = selectedText;
+    const existing = annotations.find(item => item.kind === 'highlight' && item.cfi === selected.cfi);
+    if (existing) existing.color = command.color;
+    else annotations.push({ id: crypto.randomUUID(), kind: 'highlight', cfi: selected.cfi, text: selected.text,
+      chapter: lastPosition.chapter.slice(0, 1024), percentage: lastPosition.percentage, color: command.color, createdAt: Date.now() });
+    await view.addAnnotation({ value: selected.cfi, color: command.color });
+    selectedText = undefined; selected.doc.getSelection()?.removeAllRanges(); chrome.selection(false);
+  } else if (command.type === 'removeAnnotation') {
+    const item = annotations.find(item => item.id === command.id);
+    if (!item) return;
+    if (item.kind === 'highlight') await view.deleteAnnotation({ value: item.cfi });
+    annotations = annotations.filter(item => item.id !== command.id);
+  }
+  annotationsChanged();
 }
 
 async function receive(command: any) {
@@ -276,6 +351,8 @@ async function receive(command: any) {
       userActionUntil = Date.now() + 3000;
     }
     if (command.type === 'open') await open(command);
+    else if (['bookmark', 'highlight', 'removeAnnotation'].includes(command.type)) await annotate(command);
+    else if (command.type === 'clearSelection') { selectedText?.doc.getSelection()?.removeAllRanges(); selectedText = undefined; chrome.selection(false); }
     else if (command.type === 'close') { await eventQueue; await close(); emit('closed'); session = ''; }
     else if (command.type === 'next') await view?.next();
     else if (command.type === 'previous') await view?.prev();

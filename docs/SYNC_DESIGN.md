@@ -11,8 +11,7 @@ HarmonyReadest follows Readest's KOSync **prompt** strategy. The user chooses a 
 | Choose Use other position | Restore the exact report displayed in the dialog; resume uploads only after restoration succeeds. |
 | Read or revisit an earlier passage | Save locally immediately; upload after five seconds. No remote pull or automatic page jump. |
 | Network reconnect, background or book close | Flush local progress after the opening check has been resolved. Unresolved choices and restoration failures block automatic uploads. |
-| Send progress | Explicitly publish the current local position. |
-| Check remote | Repeat the remote check and offer a choice if needed. |
+| Reader menu → Sync | Refresh the Readest library and fonts, then check progress through the configured services and offer a choice if needed. |
 
 A new report can prompt even if it is older or behind. A previously acknowledged or explicitly accepted report does not prompt again unchanged. A missing server record can be seeded with the saved local position.
 
