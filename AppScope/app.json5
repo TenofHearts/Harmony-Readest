@@ -1,6 +1,6 @@
 {
   "app": {
-    "bundleName": "com.example.harmonyreadest",
+    "bundleName": "app.tenofhearts.harmonyreadest",
     "vendor": "HarmonyReadest",
     "versionCode": 10008,
     "versionName": "0.0.9",
