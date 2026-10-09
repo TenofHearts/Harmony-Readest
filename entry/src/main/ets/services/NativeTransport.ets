@@ -6,9 +6,10 @@ export class NativeTransport implements SyncTransport {
   async request(url: string, method: string, headers: Record<string, string>, body?: string): Promise<SyncResponse> {
     const request = http.createHttp();
     try {
-      const result = await request.request(url, { method: method === 'PUT' ? http.RequestMethod.PUT : http.RequestMethod.GET,
+      const result = await request.request(url, { method: method === 'PUT' ? http.RequestMethod.PUT : method === 'POST' ? http.RequestMethod.POST :
+        method === 'DELETE' ? http.RequestMethod.DELETE : http.RequestMethod.GET,
         header: headers, extraData: body || '', expectDataType: http.HttpDataType.STRING,
-        connectTimeout: 10000, readTimeout: 15000, usingCache: false, usingProxy: true });
+        connectTimeout: 10000, readTimeout: 30000, maxLimit: 16 * 1024 * 1024, usingCache: false, usingProxy: true });
       return { status: result.responseCode, body: result.result as string };
     } catch (error) {
       const code = (error as BusinessError).code;

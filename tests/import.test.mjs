@@ -18,6 +18,7 @@ const result = await build({
         unlinkSync(path) { if (!globalThis.importFixture.files.delete(path)) throw Error('ENOENT'); }
       };
       export const hilog = { error() {} }; export const connection = {};
+      export const preferences = {}; export const cryptoFramework = {}; export const util = {}; export const font = {}; export const http = {};
       export const ConfigurationConstant = { ColorMode: { COLOR_MODE_DARK: 0, COLOR_MODE_LIGHT: 1 } };
     ` }));
     b.onResolve({ filter: /\/(Repository|CredentialVault|NativeTransport|ReaderGateway)$/ }, args => ({
@@ -39,7 +40,7 @@ const result = await build({
         }
       }`,
       NativeTransport: 'export class NativeTransport { request() { throw Error("NETWORK_FORBIDDEN"); } }',
-      ReaderGateway: `export class ReaderGateway {
+      ReaderGateway: `export const READER_ORIGIN = 'https://reader.harmonyreadest.invalid'; export class ReaderGateway {
         ready = true; session = 'import';
         async open(book, metadataOnly) {
           const f = globalThis.importFixture; f.metadataOnly = metadataOnly;
@@ -104,10 +105,10 @@ test('reader appearance events persist valid settings and reject stale or invali
   const app = fixture(); app.activeBook = importFixture.draft;
   const event = { version: 1, session: app.reader.session, type: 'appearanceChanged', settings: { fontSize: 24, lineHeight: 1.9, themeMode: 'dark', themeColor: 'solarized' } };
   await app.handle(event);
-  assert.deepEqual(importFixture.settings, event.settings);
+  for (const key of Object.keys(event.settings)) assert.equal(importFixture.settings[key], event.settings[key]);
   assert.equal(importFixture.commands.at(-1).type, 'appearance');
   const accepted = structuredClone(importFixture.settings);
-  for (const invalid of [{ fontSize: 80 }, { lineHeight: NaN }, { themeMode: 'unknown' }, { themeColor: 'unknown' }]) {
+  for (const invalid of [{ fontSize: 121 }, { lineHeight: NaN }, { themeMode: 'unknown' }, { themeColor: 'unknown' }]) {
     await app.handle({ ...event, settings: { ...event.settings, ...invalid } });
     assert.deepEqual(importFixture.settings, accepted);
   }

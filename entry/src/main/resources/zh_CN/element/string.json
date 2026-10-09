@@ -238,7 +238,7 @@
     },
     {
       "name": "about_version",
-      "value": "版本 0.0.4 · HarmonyOS"
+      "value": "版本 0.0.5 · HarmonyOS"
     },
     {
       "name": "about_license",
@@ -519,6 +519,326 @@
     {
       "name": "error_book_not_found",
       "value": "找不到本地书籍文件，请重新导入 EPUB。"
+    },
+    {
+      "name": "connecting",
+      "value": "正在连接…"
+    },
+    {
+      "name": "fonts",
+      "value": "字体"
+    },
+    {
+      "name": "layout",
+      "value": "排版"
+    },
+    {
+      "name": "override_book_font",
+      "value": "覆盖书籍字体"
+    },
+    {
+      "name": "default_font_size",
+      "value": "默认字号"
+    },
+    {
+      "name": "minimum_font_size",
+      "value": "最小字号"
+    },
+    {
+      "name": "font_weight",
+      "value": "字重"
+    },
+    {
+      "name": "preferred_font",
+      "value": "首选字体"
+    },
+    {
+      "name": "font_category",
+      "value": "字体类别"
+    },
+    {
+      "name": "serif_font",
+      "value": "衬线字体"
+    },
+    {
+      "name": "sans_serif_font",
+      "value": "无衬线字体"
+    },
+    {
+      "name": "monospace_font",
+      "value": "等宽字体"
+    },
+    {
+      "name": "cjk_font",
+      "value": "中日韩字体"
+    },
+    {
+      "name": "book_font",
+      "value": "使用书籍字体"
+    },
+    {
+      "name": "custom_fonts",
+      "value": "自定义字体"
+    },
+    {
+      "name": "manage_fonts",
+      "value": "管理字体"
+    },
+    {
+      "name": "add_fonts",
+      "value": "添加字体"
+    },
+    {
+      "name": "font_formats",
+      "value": "支持 TrueType (.ttf) 和 OpenType (.otf)，每个文件最大 32 MB。"
+    },
+    {
+      "name": "remove_font",
+      "value": "移除字体"
+    },
+    {
+      "name": "remove_font_description",
+      "value": "移除此字体？开启字体同步时，也会从你的 Readest 账户中移除。"
+    },
+    {
+      "name": "reading_mode",
+      "value": "阅读模式"
+    },
+    {
+      "name": "scrolled_mode",
+      "value": "滚动阅读"
+    },
+    {
+      "name": "paragraph",
+      "value": "段落"
+    },
+    {
+      "name": "use_book_layout",
+      "value": "使用书籍排版"
+    },
+    {
+      "name": "paragraph_margin",
+      "value": "段落间距"
+    },
+    {
+      "name": "word_spacing",
+      "value": "词间距（像素）"
+    },
+    {
+      "name": "letter_spacing",
+      "value": "字间距（像素）"
+    },
+    {
+      "name": "text_indent",
+      "value": "首行缩进（em）"
+    },
+    {
+      "name": "full_justification",
+      "value": "两端对齐"
+    },
+    {
+      "name": "hyphenation",
+      "value": "自动断词"
+    },
+    {
+      "name": "page",
+      "value": "页面"
+    },
+    {
+      "name": "top_margin",
+      "value": "上边距（像素）"
+    },
+    {
+      "name": "bottom_margin",
+      "value": "下边距（像素）"
+    },
+    {
+      "name": "left_margin",
+      "value": "左边距（像素）"
+    },
+    {
+      "name": "right_margin",
+      "value": "右边距（像素）"
+    },
+    {
+      "name": "additional_margin",
+      "value": "附加边距（%）"
+    },
+    {
+      "name": "column_gap",
+      "value": "栏间距（像素）"
+    },
+    {
+      "name": "max_columns",
+      "value": "最大栏数"
+    },
+    {
+      "name": "max_column_width",
+      "value": "最大栏宽（像素）"
+    },
+    {
+      "name": "max_column_height",
+      "value": "最大栏高（像素）"
+    },
+    {
+      "name": "replica_syncing",
+      "value": "副本同步"
+    },
+    {
+      "name": "readest_replica_sync",
+      "value": "Readest"
+    },
+    {
+      "name": "replica_fonts_description",
+      "value": "自定义字体文件"
+    },
+    {
+      "name": "replica_description",
+      "value": "通过 Readest 同步 EPUB 书籍、阅读进度和每本书的字体及排版设置。同时启用两种服务时，以 Readest 为恢复位置来源，并将选定位置同步至 KOReader。"
+    },
+    {
+      "name": "replica_connect_description",
+      "value": "登录 Readest，即可同步 EPUB 书架、阅读进度、书籍设置及自定义字体。"
+    },
+    {
+      "name": "enable_replica_sync",
+      "value": "启用同步"
+    },
+    {
+      "name": "sync_replica_now",
+      "value": "立即同步"
+    },
+    {
+      "name": "replica_data",
+      "value": "同步内容"
+    },
+    {
+      "name": "replica_data_value",
+      "value": "EPUB 书籍 · 进度 · 字体与排版"
+    },
+    {
+      "name": "cloud_storage",
+      "value": "云端存储"
+    },
+    {
+      "name": "refresh_storage",
+      "value": "刷新"
+    },
+    {
+      "name": "available_storage",
+      "value": "可用"
+    },
+    {
+      "name": "storage_files",
+      "value": "个文件"
+    },
+    {
+      "name": "storage_loading",
+      "value": "正在获取存储信息…"
+    },
+    {
+      "name": "storage_unavailable",
+      "value": "暂无法获取存储信息"
+    },
+    {
+      "name": "cloud_download",
+      "value": "下载后阅读"
+    },
+    {
+      "name": "remove_cloud_book",
+      "value": "从云端和设备移除"
+    },
+    {
+      "name": "remove_cloud_description",
+      "value": "从云端移除后，其他 Readest 设备的书架也将移除此书。Readest 会保留云端文件。"
+    },
+    {
+      "name": "error_invalid_cloud",
+      "value": "Readest 返回的同步数据无效。本地数据仍会保留。"
+    },
+    {
+      "name": "error_cloud_file_missing",
+      "value": "此云端书籍暂不可下载，请在原设备上传 EPUB 文件。"
+    },
+    {
+      "name": "error_cloud_checksum",
+      "value": "下载文件与此书不匹配，请从原设备重新同步。"
+    },
+    {
+      "name": "error_cloud_conflict",
+      "value": "上传期间云端位置发生变化，请检查远端进度并选择要保留的位置。"
+    },
+    {
+      "name": "cloud_progress_pending",
+      "value": "{count} 个已保存位置需要确认，请打开对应书籍并选择要继续阅读的位置。"
+    },
+    {
+      "name": "email",
+      "value": "邮箱"
+    },
+    {
+      "name": "sign_in",
+      "value": "登录"
+    },
+    {
+      "name": "sync_fonts_now",
+      "value": "立即同步"
+    },
+    {
+      "name": "last_synced",
+      "value": "上次同步"
+    },
+    {
+      "name": "never_synced",
+      "value": "尚未同步"
+    },
+    {
+      "name": "decrease_value",
+      "value": "减小"
+    },
+    {
+      "name": "increase_value",
+      "value": "增大"
+    },
+    {
+      "name": "error_invalid_font",
+      "value": "字体无效或不受支持。请选择最大 32 MB 的有效 TTF 或 OTF 文件。"
+    },
+    {
+      "name": "error_invalid_replica",
+      "value": "Readest 返回的字体数据无效。同步将重试，不会跳过该数据。"
+    },
+    {
+      "name": "error_sync_quota",
+      "value": "你的 Readest 存储空间已满。"
+    },
+    {
+      "name": "error_sync_clock",
+      "value": "请检查设备日期和时间，然后重新同步。"
+    },
+    {
+      "name": "account",
+      "value": "账户"
+    },
+    {
+      "name": "replica_status_idle",
+      "value": "就绪"
+    },
+    {
+      "name": "replica_status_connected",
+      "value": "已连接"
+    },
+    {
+      "name": "replica_status_syncing",
+      "value": "正在同步…"
+    },
+    {
+      "name": "replica_status_synced",
+      "value": "已同步"
+    },
+    {
+      "name": "replica_status_error",
+      "value": "同步需要处理"
     }
   ]
 }

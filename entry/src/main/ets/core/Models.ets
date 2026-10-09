@@ -14,6 +14,7 @@ export class TocEntry {
 }
 
 export class BookMetadata {
+  metadataJSON: string = '';
   title: string = '';
   author: string = '';
   hash: string = '';
@@ -21,6 +22,7 @@ export class BookMetadata {
 }
 
 export class BookRecord {
+  metadataJSON: string = '';
   id: string = '';
   title: string = '';
   author: string = '';
@@ -35,6 +37,14 @@ export class BookRecord {
   syncScope: string = '';
   remoteToken: string = '';
   toc: TocEntry[] = [];
+  cloudAccount: string = '';
+  cloudBook: string = '';
+  cloudConfig: string = '';
+  cloudUploaded: boolean = false;
+  cloudDeleted: boolean = false;
+  style: ReaderSettings | null = null;
+  styleUpdatedAt: number = 0;
+  styleDirty: boolean = false;
 }
 
 export class ThemeSettings {
@@ -45,6 +55,69 @@ export class ThemeSettings {
 export class ReaderSettings extends ThemeSettings {
   fontSize: number = 20;
   lineHeight: number = 1.7;
+  minimumFontSize: number = 8;
+  fontWeight: number = 400;
+  overrideFont: boolean = false;
+  defaultFont: string = 'serif';
+  serifFont: string = 'serif';
+  sansSerifFont: string = 'sans-serif';
+  monospaceFont: string = 'monospace';
+  defaultCJKFont: string = '';
+  useBookLayout: boolean = false;
+  paragraphMargin: number = 1;
+  wordSpacing: number = 0;
+  letterSpacing: number = 0;
+  textIndent: number = 0;
+  fullJustification: boolean = false;
+  hyphenation: boolean = true;
+  marginTopPx: number = 12;
+  marginBottomPx: number = 12;
+  marginLeftPx: number = 24;
+  marginRightPx: number = 24;
+  gapPercent: number = 4;
+  columnGapPx: number = 32;
+  maxColumnCount: number = 2;
+  maxInlineSize: number = 720;
+  maxBlockSize: number = 9999;
+  scrolled: boolean = false;
+}
+
+export class CustomFont {
+  id: string = '';
+  filename: string = '';
+  name: string = '';
+  family: string = '';
+  style: string = 'normal';
+  weight: number = 400;
+  variable: boolean = false;
+  path: string = '';
+  byteSize: number = 0;
+  partialMd5: string = '';
+  downloadedAt: number = 0;
+  publishedFor: string = '';
+  reincarnation: string = '';
+}
+
+export class ReaderFont {
+  family: string = '';
+  style: string = 'normal';
+  weight: string = '400';
+  url: string = '';
+}
+
+export class ReplicaSettings {
+  sessionEpoch: number = -1;
+  accessToken: string = '';
+  refreshToken: string = '';
+  expiresAt: number = 0;
+  userId: string = '';
+  email: string = '';
+  enabled: boolean = true;
+  syncFonts: boolean = true;
+  cursor: string = '';
+  clock: string = '';
+  lastSyncedAt: number = 0;
+  pendingDeletes: string[] = [];
 }
 
 export class KoSyncSettings {
@@ -59,6 +132,7 @@ export class KoSyncSettings {
 }
 
 export interface RemoteProgress {
+  cfi?: string;
   document?: string;
   progress?: string;
   percentage?: number;
@@ -81,6 +155,7 @@ export class ReaderCommand {
   metadataOnly?: boolean;
   chrome?: ReaderChromeState;
   systemDark?: boolean;
+  fonts?: ReaderFont[];
 }
 
 export class ReaderChromeState {
@@ -120,4 +195,5 @@ export interface ProgressSyncProvider {
   authenticate(): Promise<void>;
   pull(hash: string): Promise<RemoteProgress | null>;
   push(hash: string, position: ReadingPosition): Promise<RemoteProgress | null>;
+  acceptRemote?(hash: string, position: ReadingPosition): Promise<void>;
 }

@@ -70,8 +70,15 @@ export class ProgressCoordinator {
         }
         position.updatedAt = (remote.timestamp || 0) * 1000;
         position.revision = revision + 1;
-        book.position = position; book.dirty = false; book.remoteToken = remoteToken(remote);
+        book.position = position; book.dirty = !!this.provider.acceptRemote; book.remoteToken = remoteToken(remote);
         await this.hooks.save(book);
+        if (this.provider.acceptRemote) {
+          const snapshot = JSON.parse(JSON.stringify(position)) as ReadingPosition;
+          await this.provider.acceptRemote(book.hash, snapshot);
+          if (!this.hooks.active()) return;
+          if (canAcknowledge(snapshot.revision, book.position.revision)) book.dirty = false;
+          await this.hooks.save(book);
+        }
       } else if (decision === 'push') {
         const snapshot = JSON.parse(JSON.stringify(book.position)) as ReadingPosition;
         const ack = await this.provider.push(book.hash, snapshot);

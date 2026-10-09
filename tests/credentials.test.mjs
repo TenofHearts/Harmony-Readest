@@ -81,3 +81,17 @@ test('a key-store failure cannot replace saved credentials or silently generate 
   await assert.rejects(vault.save({ password: 'test' }));
   assert.equal(f.generated, 0); assert.equal(f.data.get('sealed'), 'existing');
 });
+
+test('Readest tokens use a separate encrypted vault and clearing them cannot change KoSync credentials', async () => {
+  const f = fixture(), ko = new CredentialVault('kosync-key', 'kosync-prefs'); await ko.init({});
+  const credentials = { username: 'fixture-user', password: 'fixture-password' }; await ko.save(credentials);
+  const koCipher = f.data.get('sealed'), replicaData = new Map();
+  f.prefs = { async get(key, fallback) { return replicaData.get(key) ?? fallback; }, async put(key, value) { replicaData.set(key, value); },
+    async delete(key) { replicaData.delete(key); }, async flush() {} };
+  const replica = new CredentialVault('replica-key', 'replica-prefs'); await replica.init({});
+  const session = JSON.stringify({ accessToken: 'fixture-access-token', refreshToken: 'fixture-refresh-token', cursor: 'saved-cursor' });
+  await replica.saveText(session); assert.equal(await replica.loadText(), session);
+  assert.ok(!replicaData.get('sealed').includes('fixture-access-token')); assert.equal(f.keys.size, 2);
+  await replica.clear(); assert.equal(await replica.loadText(), '');
+  assert.equal(f.data.get('sealed'), koCipher); assert.deepEqual(await ko.load(), credentials);
+});

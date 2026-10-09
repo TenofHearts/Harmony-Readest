@@ -1,8 +1,8 @@
 import layout from './chrome.css';
 import motion from './readest-motion.css';
 import { BUILTIN_THEMES, palette, themeIsDark } from './palette';
+import { type Appearance, type ReaderFont } from './typography';
 
-type Appearance = { fontSize: number; lineHeight: number; themeMode: string; themeColor: string };
 type TocItem = { label: string; href: string; depth: number };
 type ChromeHost = {
   command: (command: any) => void;
@@ -10,6 +10,7 @@ type ChromeHost = {
   getView: () => any;
   getSettings: () => Appearance;
   getSystemDark: () => boolean;
+  getFonts: () => ReaderFont[];
 };
 
 // Readest HeaderBar / MobileFooterBar / DesktopFooterBar adapted to the
@@ -34,10 +35,48 @@ const icons: Record<string, string> = {
   dark: '<path d="M20 14a8 8 0 01-10-10 8 8 0 1010 10z"/>'
 };
 const english: Record<string, string> = {
+  "fontSize": "Font Size",
+  "minimumFontSize": "Minimum Font Size",
+  "fontWeight": "Font Weight",
+  "lineHeight": "Line Spacing",
+  "paragraphMargin": "Paragraph Margin",
+  "wordSpacing": "Word Spacing (px)",
+  "letterSpacing": "Letter Spacing (px)",
+  "textIndent": "Text Indent (em)",
+  "marginTopPx": "Top Margin (px)",
+  "marginBottomPx": "Bottom Margin (px)",
+  "marginLeftPx": "Left Margin (px)",
+  "marginRightPx": "Right Margin (px)",
+  "gapPercent": "Additional Margin (%)",
+  "columnGapPx": "Column Gap (px)",
+  "maxColumnCount": "Maximum Number of Columns",
+  "maxInlineSize": "Maximum Column Width (px)",
+  "maxBlockSize": "Maximum Column Height (px)",
+  "overrideFont": "Override Book Font",
+  "useBookLayout": "Use Book Layout",
+  "fullJustification": "Full Justification",
+  "hyphenation": "Hyphenation",
+  "scrolled": "Scrolled Mode",
+  "defaultFont": "Font Category",
+  "serifFont": "Serif Font",
+  "sansSerifFont": "Sans-Serif Font",
+  "monospaceFont": "Monospace Font",
+  "defaultCJKFont": "CJK Font",
+  "manageFonts": "Manage Fonts",
+  "fontSizes": "Font Size",
+  "preferredFont": "Preferred Font",
+  "paragraph": "Paragraph",
+  "page": "Page",
+  "fonts": "Fonts",
+  "layout": "Layout",
+  "serif": "Serif Font",
+  "sans-serif": "Sans-Serif Font",
+  "monospace": "Monospace Font",
+  "bookFont": "Use Book Font",
   library: 'Bookshelf', toc: 'Contents', color: 'Theme', progress: 'Reading progress', font: 'Font & Layout', menu: 'View', close: 'Close',
   previous: 'Previous page', next: 'Next page', previousSection: 'Previous section', nextSection: 'Next section',
   historyBack: 'Go back', historyForward: 'Go forward', decrease: 'Decrease font size', increase: 'Increase font size',
-  fontSize: 'Font size', lineHeight: 'Line spacing', light: 'Light', sepia: 'Sepia', dark: 'Dark',
+  light: 'Light', sepia: 'Sepia', dark: 'Dark',
   settings: 'Settings', upload: 'Send progress', reconcile: 'Check remote', status: 'Offline ready',
   auto: 'System', themeMode: 'Theme mode', themeColor: 'Color scheme', scopeReader: 'Reader',
   default: 'Default', gray: 'Gray', grass: 'Grass', cherry: 'Cherry', sky: 'Sky', solarized: 'Solarized', gruvbox: 'Gruvbox', nord: 'Nord', contrast: 'Contrast', sunset: 'Sunset'
@@ -46,16 +85,41 @@ const english: Record<string, string> = {
 export function createChrome(host: ChromeHost) {
   const style = document.createElement('style'); style.textContent = `${layout}\n${motion}`; document.head.append(style);
   const root = document.createElement('div'); root.id = 'reader-chrome'; root.hidden = true; document.body.append(root);
-  let labels = { ...english }, visible = true, panel = '', title = '', toc: TocItem[] = [];
+  let labels = { ...english }, visible = true, panel = '', title = '', toc: TocItem[] = [], fontTab = 'fonts';
   let progress = 0, chapter = '', syncEnabled = false, busy = false;
   const text = (value: string) => value.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
   const button = (action: string, extra = '') => `<button class="icon-button ${extra}" type="button" data-action="${action}" aria-label="${text(labels[action])}" title="${text(labels[action])}"><svg viewBox="0 0 24 24" aria-hidden="true">${icons[action]}</svg></button>`;
   const navigation = () => ['previousSection', 'previous', 'historyBack', 'historyForward', 'next', 'nextSection'].map(a => button(a)).join('');
   const range = () => `<input type="range" min="0" max="100" step="0.1" value="${progress}" aria-label="${text(labels.progress)}" data-progress>`;
   // Each panel is a separate extension point, matching Readest's footer panels.
+  const numericLimits: Record<string, [number, number, number]> = {"fontSize":[1,120,1],"minimumFontSize":[1,120,1],"fontWeight":[100,900,100],"lineHeight":[1,3,0.1],"paragraphMargin":[0,4,0.1],"wordSpacing":[-4,8,0.5],"letterSpacing":[-2,4,0.5],"textIndent":[-2,4,1],"marginTopPx":[0,144,4],"marginBottomPx":[0,144,4],"marginLeftPx":[0,144,4],"marginRightPx":[0,144,4],"gapPercent":[0,30,1],"columnGapPx":[0,200,4],"maxColumnCount":[1,4,1],"maxInlineSize":[200,9999,50],"maxBlockSize":[400,9999,50]};
+  const numericRow = (key: keyof Appearance) => {
+    const [min, max, step] = numericLimits[key];
+    return `<div class="settings-row"><label for="setting-${key}">${text(labels[key])}</label><input id="setting-${key}" data-setting="${key}" type="number" min="${min}" max="${max}" step="${step}" aria-label="${text(labels[key])}"></div>`;
+  };
+  const flagRow = (key: keyof Appearance) => `<div class="settings-row"><label for="setting-${key}">${text(labels[key])}</label><input id="setting-${key}" type="checkbox" role="switch" data-setting="${key}" aria-label="${text(labels[key])}"></div>`;
+  const fontRow = (key: keyof Appearance, fallback: string) => {
+    const options = key === 'defaultFont' ? ['serif', 'sans-serif'] : [...new Set([fallback, ...host.getFonts().map(f => f.family)])];
+    const selected = String(host.getSettings()[key]);
+    if (!options.includes(selected)) options.push(selected);
+    return `<div class="settings-row"><label for="setting-${key}">${text(labels[key])}</label><select id="setting-${key}" data-setting="${key}" aria-label="${text(labels[key])}">${options.map(value => `<option value="${text(value)}">${text(labels[value] || (value ? value : labels.bookFont))}</option>`).join('')}</select></div>`;
+  };
+  const boxed = (label: string, rows: string) => `<h3 class="setting-section">${text(labels[label])}</h3><div class="boxed-settings">${rows}</div>`;
+  const fontPanel = () => `<div class="font-tabs" role="tablist">${['fonts', 'layout'].map(tab => `<button type="button" role="tab" data-font-tab="${tab}" aria-selected="${fontTab === tab}">${text(labels[tab])}</button>`).join('')}</div>
+    <div data-font-group="fonts" ${fontTab !== 'fonts' ? 'hidden' : ''}>
+    <div class="boxed-settings">${flagRow('overrideFont')}</div>
+    ${boxed('fontSizes', `<div class="settings-row"><label for="setting-fontSize">${text(labels.fontSize)}</label><div class="number-stepper">${button('decrease')}<input id="setting-fontSize" data-setting="fontSize" type="number" min="1" max="120" step="1" aria-label="${text(labels.fontSize)}"><output data-font-size class="visually-hidden"></output>${button('increase')}</div></div>${numericRow('minimumFontSize')}`)}
+    ${boxed('fontWeight', numericRow('fontWeight'))}
+    ${boxed('preferredFont', fontRow('defaultFont', 'serif') + fontRow('serifFont', 'serif') + fontRow('sansSerifFont', 'sans-serif') + fontRow('monospaceFont', 'monospace') + fontRow('defaultCJKFont', ''))}
+    <button type="button" class="manage-fonts" data-action="settings">${text(labels.manageFonts)}</button></div>
+    <div data-font-group="layout" ${fontTab !== 'layout' ? 'hidden' : ''}>
+    <div class="boxed-settings">${flagRow('scrolled')}</div>
+    ${boxed('paragraph', flagRow('useBookLayout') + numericRow('paragraphMargin') + `<div class="settings-row"><label for="reader-line-height">${text(labels.lineHeight)}</label><output data-line-height></output></div><input id="reader-line-height" data-setting="lineHeight" type="range" min="1" max="3" step=".1" aria-label="${text(labels.lineHeight)}">` + numericRow('wordSpacing') + numericRow('letterSpacing') + numericRow('textIndent') + flagRow('fullJustification') + flagRow('hyphenation'))}
+    ${boxed('page', numericRow('marginTopPx') + numericRow('marginBottomPx') + numericRow('marginLeftPx') + numericRow('marginRightPx') + numericRow('gapPercent') + numericRow('columnGapPx') + numericRow('maxColumnCount') + numericRow('maxInlineSize') + numericRow('maxBlockSize'))}</div>`;
+
   const panels: Record<string, () => string> = {
     progress: () => `<div class="progress-caption"><span class="chapter-label">${text(chapter || title)}</span><output class="percentage">${Math.round(progress)}%</output></div>${range()}<div class="navigation-actions">${navigation()}</div>`,
-    font: () => `<div class="settings-row"><label>${text(labels.fontSize)}</label>${button('decrease')}<output data-font-size></output>${button('increase')}</div><div class="settings-row"><label for="reader-line-height">${text(labels.lineHeight)}</label><output data-line-height></output></div><input id="reader-line-height" type="range" min="1.2" max="2.4" step="0.1" aria-label="${text(labels.lineHeight)}">`,
+    font: fontPanel,
     color: () => `<div class="settings-row"><label>${text(labels.themeMode)}</label><div class="theme-modes" role="radiogroup" aria-label="${text(labels.themeMode)}">${['auto', 'light', 'dark'].map(m => `<button class="icon-button" type="button" role="radio" data-mode="${m}" aria-label="${text(labels[m])}" title="${text(labels[m])}"><svg viewBox="0 0 24 24" aria-hidden="true">${icons[m]}</svg></button>`).join('')}</div></div><div class="theme-color-label">${text(labels.themeColor)}</div><div class="theme-options" role="group" aria-label="${text(labels.themeColor)}">${BUILTIN_THEMES.map(t => `<button class="theme-option" type="button" data-theme="${t.name}" aria-label="${text(labels[t.name] || t.label)}"><span class="theme-sample">Aa</span><span class="theme-name">${text(labels[t.name] || t.label)}</span></button>`).join('')}</div>`,
     toc: () => toc.map((item, i) => `<button class="toc-item" type="button" data-toc="${i}" style="padding-inline-start:${12 + item.depth * 16}px">${text(item.label)}</button>`).join('')
   };
@@ -98,14 +162,21 @@ export function createChrome(host: ChromeHost) {
     root.querySelector<HTMLElement>('[data-font-size]')!.textContent = String(settings.fontSize);
     root.querySelector<HTMLElement>('[data-line-height]')!.textContent = settings.lineHeight.toFixed(1);
     root.querySelector<HTMLInputElement>('#reader-line-height')!.value = String(settings.lineHeight);
+    for (const input of root.querySelectorAll<HTMLInputElement | HTMLSelectElement>('[data-setting]')) {
+      const key = input.dataset.setting as keyof Appearance;
+      if (input instanceof HTMLInputElement && input.type === 'checkbox') input.checked = settings[key] as boolean;
+      else if (document.activeElement !== input) input.value = String(settings[key]);
+      input.disabled = settings.useBookLayout && ['paragraphMargin', 'lineHeight', 'wordSpacing', 'letterSpacing', 'textIndent', 'fullJustification', 'hyphenation'].includes(key) || settings.scrolled && ['columnGapPx', 'maxColumnCount'].includes(key);
+    }
+    root.querySelector<HTMLInputElement>('[data-setting="fontSize"]')!.min = String(settings.minimumFontSize);
     for (const b of root.querySelectorAll<HTMLElement>('[data-theme]')) {
       const colors = palette(b.dataset.theme!, dark);
       b.style.background = colors.bg; b.style.color = colors.fg;
       b.setAttribute('aria-pressed', String(settings.themeColor === b.dataset.theme));
     }
     for (const b of root.querySelectorAll<HTMLElement>('[data-mode]')) b.setAttribute('aria-checked', String(settings.themeMode === b.dataset.mode));
-    (root.querySelector('[data-action="decrease"]') as HTMLButtonElement).disabled = settings.fontSize <= 12;
-    (root.querySelector('[data-action="increase"]') as HTMLButtonElement).disabled = settings.fontSize >= 40;
+    (root.querySelector('[data-action="decrease"]') as HTMLButtonElement).disabled = settings.fontSize <= settings.minimumFontSize;
+    (root.querySelector('[data-action="increase"]') as HTMLButtonElement).disabled = settings.fontSize >= 120;
   }
   function appearance(settings: Appearance) {
     host.command({ type: 'appearance', settings }); host.emit('appearanceChanged', { settings });
@@ -114,13 +185,14 @@ export function createChrome(host: ChromeHost) {
     const target = (event.target as Element).closest<HTMLButtonElement>('button');
     if (!target || target.disabled) return;
     const action = target.dataset.action;
+    if (target.dataset.fontTab) { fontTab = target.dataset.fontTab; render(); return; }
     if (target.dataset.toc !== undefined) { host.command({ type: 'navigate', href: toc[Number(target.dataset.toc)].href }); panel = ''; syncVisibility(); }
     else if (target.dataset.theme) appearance({ ...host.getSettings(), themeColor: target.dataset.theme });
     else if (target.dataset.mode) appearance({ ...host.getSettings(), themeMode: target.dataset.mode });
     else if (action === 'menu') { const menu = root.querySelector<HTMLElement>('.view-menu')!; menu.hidden = !menu.hidden; target.setAttribute('aria-expanded', String(!menu.hidden)); }
     else if (action && panels[action]) { panel = panel === action ? '' : action; root.querySelector<HTMLElement>('.view-menu')!.hidden = true; syncVisibility(); }
     else if (action === 'close') { panel = ''; syncVisibility(); }
-    else if (action === 'decrease' || action === 'increase') appearance({ ...host.getSettings(), fontSize: Math.max(12, Math.min(40, host.getSettings().fontSize + (action === 'increase' ? 2 : -2))) });
+    else if (action === 'decrease' || action === 'increase') appearance({ ...host.getSettings(), fontSize: Math.max(host.getSettings().minimumFontSize, Math.min(120, host.getSettings().fontSize + (action === 'increase' ? 2 : -2))) });
     else if (['library', 'settings', 'upload', 'reconcile'].includes(action!)) { root.querySelector<HTMLElement>('.view-menu')!.hidden = true; host.emit('readerAction', { action }); }
     else if (action) host.command({ type: action });
   });
@@ -132,7 +204,18 @@ export function createChrome(host: ChromeHost) {
   root.addEventListener('change', event => {
     const target = event.target as HTMLInputElement;
     if (target.matches('[data-progress]')) host.command({ type: 'fraction', percentage: Number(target.value) / 100 });
-    else if (target.id === 'reader-line-height') appearance({ ...host.getSettings(), lineHeight: Number(target.value) });
+    else if (target.dataset.setting) {
+      const key = target.dataset.setting as keyof Appearance;
+      const settings = { ...host.getSettings() };
+      if (target.type === 'checkbox') (settings as any)[key] = target.checked;
+      else if (numericLimits[key]) {
+        const value = Number(target.value), [min, max] = numericLimits[key];
+        if (!target.value.trim() || !Number.isFinite(value) || value < min || value > max || key === 'maxColumnCount' && !Number.isInteger(value)) { updateAppearance(); return; }
+        (settings as any)[key] = value;
+        if (key === 'minimumFontSize' || key === 'fontSize') settings.fontSize = Math.max(settings.fontSize, settings.minimumFontSize);
+      } else (settings as any)[key] = target.value;
+      appearance(settings);
+    }
   });
   document.addEventListener('keydown', event => {
     if (root.hidden) return;
@@ -152,6 +235,7 @@ export function createChrome(host: ChromeHost) {
     toggle() { setVisible(!visible); host.emit('toggleControls'); },
     back,
     appearance: updateAppearance,
+    fontsChanged: render,
     position(value: { percentage: number; chapter: string }) { progress = value.percentage * 100; chapter = value.chapter; updatePosition(); },
     state(value: any) {
       root.style.setProperty('--safe-top', `${Math.max(0, value.safeTop || 0)}px`);

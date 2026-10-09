@@ -238,7 +238,7 @@
     },
     {
       "name": "about_version",
-      "value": "Version 0.0.4 · HarmonyOS"
+      "value": "Version 0.0.5 · HarmonyOS"
     },
     {
       "name": "about_license",
@@ -519,6 +519,326 @@
     {
       "name": "error_book_not_found",
       "value": "The local book file could not be found. Import the EPUB again."
+    },
+    {
+      "name": "connecting",
+      "value": "Connecting…"
+    },
+    {
+      "name": "fonts",
+      "value": "Fonts"
+    },
+    {
+      "name": "layout",
+      "value": "Layout"
+    },
+    {
+      "name": "override_book_font",
+      "value": "Override Book Font"
+    },
+    {
+      "name": "default_font_size",
+      "value": "Default Font Size"
+    },
+    {
+      "name": "minimum_font_size",
+      "value": "Minimum Font Size"
+    },
+    {
+      "name": "font_weight",
+      "value": "Font Weight"
+    },
+    {
+      "name": "preferred_font",
+      "value": "Preferred Font"
+    },
+    {
+      "name": "font_category",
+      "value": "Font Category"
+    },
+    {
+      "name": "serif_font",
+      "value": "Serif Font"
+    },
+    {
+      "name": "sans_serif_font",
+      "value": "Sans-Serif Font"
+    },
+    {
+      "name": "monospace_font",
+      "value": "Monospace Font"
+    },
+    {
+      "name": "cjk_font",
+      "value": "CJK Font"
+    },
+    {
+      "name": "book_font",
+      "value": "Use Book Font"
+    },
+    {
+      "name": "custom_fonts",
+      "value": "Custom Fonts"
+    },
+    {
+      "name": "manage_fonts",
+      "value": "Manage Fonts"
+    },
+    {
+      "name": "add_fonts",
+      "value": "Add Fonts"
+    },
+    {
+      "name": "font_formats",
+      "value": "TrueType (.ttf) and OpenType (.otf), up to 32 MB per file."
+    },
+    {
+      "name": "remove_font",
+      "value": "Remove font"
+    },
+    {
+      "name": "remove_font_description",
+      "value": "Remove this font? With font syncing enabled, it will also be removed from your Readest account."
+    },
+    {
+      "name": "reading_mode",
+      "value": "Reading Mode"
+    },
+    {
+      "name": "scrolled_mode",
+      "value": "Scrolled Mode"
+    },
+    {
+      "name": "paragraph",
+      "value": "Paragraph"
+    },
+    {
+      "name": "use_book_layout",
+      "value": "Use Book Layout"
+    },
+    {
+      "name": "paragraph_margin",
+      "value": "Paragraph Margin"
+    },
+    {
+      "name": "word_spacing",
+      "value": "Word Spacing (px)"
+    },
+    {
+      "name": "letter_spacing",
+      "value": "Letter Spacing (px)"
+    },
+    {
+      "name": "text_indent",
+      "value": "Text Indent (em)"
+    },
+    {
+      "name": "full_justification",
+      "value": "Full Justification"
+    },
+    {
+      "name": "hyphenation",
+      "value": "Hyphenation"
+    },
+    {
+      "name": "page",
+      "value": "Page"
+    },
+    {
+      "name": "top_margin",
+      "value": "Top Margin (px)"
+    },
+    {
+      "name": "bottom_margin",
+      "value": "Bottom Margin (px)"
+    },
+    {
+      "name": "left_margin",
+      "value": "Left Margin (px)"
+    },
+    {
+      "name": "right_margin",
+      "value": "Right Margin (px)"
+    },
+    {
+      "name": "additional_margin",
+      "value": "Additional Margin (%)"
+    },
+    {
+      "name": "column_gap",
+      "value": "Column Gap (px)"
+    },
+    {
+      "name": "max_columns",
+      "value": "Maximum Number of Columns"
+    },
+    {
+      "name": "max_column_width",
+      "value": "Maximum Column Width (px)"
+    },
+    {
+      "name": "max_column_height",
+      "value": "Maximum Column Height (px)"
+    },
+    {
+      "name": "replica_syncing",
+      "value": "Replica Syncing"
+    },
+    {
+      "name": "readest_replica_sync",
+      "value": "Readest"
+    },
+    {
+      "name": "replica_fonts_description",
+      "value": "Custom font files"
+    },
+    {
+      "name": "replica_description",
+      "value": "Sync EPUB books, reading positions, and per-book font and layout settings with Readest. With both services enabled, Readest supplies the resume position and the chosen position is also sent to KOReader."
+    },
+    {
+      "name": "replica_connect_description",
+      "value": "Sign in to sync your EPUB library, reading positions, book settings, and custom fonts with Readest."
+    },
+    {
+      "name": "enable_replica_sync",
+      "value": "Enable Sync"
+    },
+    {
+      "name": "sync_replica_now",
+      "value": "Sync Now"
+    },
+    {
+      "name": "replica_data",
+      "value": "Synced Data"
+    },
+    {
+      "name": "replica_data_value",
+      "value": "EPUB books · Progress · Font & Layout"
+    },
+    {
+      "name": "cloud_storage",
+      "value": "Cloud Storage"
+    },
+    {
+      "name": "refresh_storage",
+      "value": "Refresh"
+    },
+    {
+      "name": "available_storage",
+      "value": "Available"
+    },
+    {
+      "name": "storage_files",
+      "value": "files"
+    },
+    {
+      "name": "storage_loading",
+      "value": "Loading storage…"
+    },
+    {
+      "name": "storage_unavailable",
+      "value": "Storage information unavailable"
+    },
+    {
+      "name": "cloud_download",
+      "value": "Download to read"
+    },
+    {
+      "name": "remove_cloud_book",
+      "value": "Remove from cloud and device"
+    },
+    {
+      "name": "remove_cloud_description",
+      "value": "Cloud removal also removes this book from your other Readest shelves. Readest retains the cloud files."
+    },
+    {
+      "name": "error_invalid_cloud",
+      "value": "Readest returned invalid sync data. Your local data is retained."
+    },
+    {
+      "name": "error_cloud_file_missing",
+      "value": "This cloud book is not available to download. Upload the EPUB from the source device."
+    },
+    {
+      "name": "error_cloud_checksum",
+      "value": "The downloaded file does not match this book. Sync again from the source device."
+    },
+    {
+      "name": "error_cloud_conflict",
+      "value": "The cloud position changed during upload. Check remote progress and choose a position."
+    },
+    {
+      "name": "cloud_progress_pending",
+      "value": "{count} saved positions need review. Open those books to choose where to continue."
+    },
+    {
+      "name": "email",
+      "value": "Email"
+    },
+    {
+      "name": "sign_in",
+      "value": "Sign in"
+    },
+    {
+      "name": "sync_fonts_now",
+      "value": "Sync now"
+    },
+    {
+      "name": "last_synced",
+      "value": "Last synced"
+    },
+    {
+      "name": "never_synced",
+      "value": "Not yet synced"
+    },
+    {
+      "name": "decrease_value",
+      "value": "Decrease"
+    },
+    {
+      "name": "increase_value",
+      "value": "Increase"
+    },
+    {
+      "name": "error_invalid_font",
+      "value": "Invalid or unsupported font. Choose a valid TTF or OTF file up to 32 MB."
+    },
+    {
+      "name": "error_invalid_replica",
+      "value": "Readest returned invalid font data. Sync will retry without skipping it."
+    },
+    {
+      "name": "error_sync_quota",
+      "value": "Your Readest storage quota is full."
+    },
+    {
+      "name": "error_sync_clock",
+      "value": "Check the device date and time, then sync again."
+    },
+    {
+      "name": "account",
+      "value": "Account"
+    },
+    {
+      "name": "replica_status_idle",
+      "value": "Ready"
+    },
+    {
+      "name": "replica_status_connected",
+      "value": "Connected"
+    },
+    {
+      "name": "replica_status_syncing",
+      "value": "Syncing…"
+    },
+    {
+      "name": "replica_status_synced",
+      "value": "Synced"
+    },
+    {
+      "name": "replica_status_error",
+      "value": "Sync needs attention"
     }
   ]
 }

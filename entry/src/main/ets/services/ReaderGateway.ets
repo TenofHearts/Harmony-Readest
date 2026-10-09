@@ -2,7 +2,7 @@ import { common } from '@kit.AbilityKit';
 import { webview } from '@kit.ArkWeb';
 import { fileIo as fs } from '@kit.CoreFileKit';
 import { util } from '@kit.ArkTS';
-import { BookRecord, ReaderCommand, ReaderEvent, ReadingPosition, RemoteProgress } from '../core/Models';
+import { BookRecord, CustomFont, ReaderCommand, ReaderEvent, ReadingPosition, RemoteProgress } from '../core/Models';
 import { isCurrentSession } from '../core/SyncPolicy';
 
 export const READER_ORIGIN: string = 'https://reader.harmonyreadest.invalid';
@@ -23,6 +23,7 @@ class PendingRestore {
 export class ReaderGateway {
   session: string = '';
   ready: boolean = false;
+  fonts: CustomFont[] = [];
   private book?: BookRecord;
   private pending?: PendingRestore;
   onEvent: (event: ReaderEvent) => void = () => {};
@@ -101,14 +102,15 @@ export class ReaderGateway {
   }
 
   private locate(remote: RemoteProgress, type: string): Promise<ReadingPosition> {
-    if (!remote.progress?.startsWith('/body/DocFragment')) return Promise.reject(new Error('UNRESOLVED_POSITION'));
+    if (!remote.cfi?.startsWith('epubcfi(') && !remote.progress?.startsWith('/body/DocFragment')) return Promise.reject(new Error('UNRESOLVED_POSITION'));
     return new Promise((resolve: (position: ReadingPosition) => void, reject: (error: Error) => void) => {
       const pending = new PendingRestore(util.generateRandomUUID(), this.session, resolve, reject);
       this.pending = pending;
       pending.timer = setTimeout(() => {
         if (this.pending === pending) { this.pending = undefined; reject(new Error('READER_TIMEOUT')); }
       }, 15000);
-      const command = new ReaderCommand(); command.type = type; command.xpointer = remote.progress; command.requestId = pending.id;
+      const command = new ReaderCommand(); command.type = type; command.cfi = remote.cfi;
+      command.xpointer = remote.cfi ? undefined : remote.progress; command.requestId = pending.id;
       this.send(command).catch(() => { clearTimeout(pending.timer); this.pending = undefined; reject(new Error('READER_ERROR')); });
     });
   }
@@ -120,6 +122,15 @@ export class ReaderGateway {
     response.setResponseCode(404); response.setReasonMessage('Not Found'); response.setResponseData('');
     if (!value.startsWith(`${READER_ORIGIN}/`)) return response;
     const name = value.slice(READER_ORIGIN.length);
+    const font = this.fonts.find((item: CustomFont) => name === `/fonts/${item.id}`);
+    if (font) {
+      response.setResponseCode(200); response.setReasonMessage('OK'); response.setResponseMimeType('font/ttf');
+      response.setResponseIsReady(false);
+      this.bookBytes(font.path).then((bytes: ArrayBuffer) => {
+        response.setResponseData(bytes); response.setResponseIsReady(true);
+      }).catch(() => { response.setResponseCode(404); response.setResponseIsReady(true); });
+      return response;
+    }
     if (this.book && name === `/books/${this.book.id}.epub`) {
       response.setResponseCode(200); response.setReasonMessage('OK'); response.setResponseMimeType('application/epub+zip');
       response.setResponseIsReady(false);

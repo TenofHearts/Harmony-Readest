@@ -1,26 +1,29 @@
 # Readest for HarmonyOS
 
-A new HarmonyOS app with a native ArkUI library and settings, and an offline EPUB reader built from Readest's Foliate engine. The initial release synchronizes reading positions with Readest through a shared KoSync server.
+A HarmonyOS app with a native ArkUI library and settings, and an offline EPUB reader built from Readest's Foliate engine. Readest cloud sync exchanges EPUB books, reading positions, per-book typography and custom fonts. KoSync is also available for reading positions.
 
 The UI follows the pinned Readest design: a compact shelf toolbar, cover-sized import tile, floating tabbed settings, neutral boxed lists, and sync-source choice cards containing their own chapter and progress. Reader chrome uses a compact title bar, expandable phone panels and a slim desktop progress toolbar. Bar transitions reuse Readest's CSS declarations; page turns use its vendored Foliate animation. EPUB import and reading work without an internet connection; wide screens show two reading columns and phones show one.
 
-Sync settings use collapsible service cards. Once connected, KOReader shows the saved account, sync options and Disconnect; username/password fields appear only when disconnected. Unsupported methods are hidden. The About page describes current reading features and displays the app version and license.
+Sync settings use collapsible Readest and KOReader service cards. Connected cards show the saved account, sync options and Disconnect; login fields appear only when disconnected. The Readest card includes live cloud storage usage, quota, available space and file count. Unsupported services and categories are hidden.
 
 ## First release
 
 - Import reflowable EPUBs, extract covers and metadata, and resume saved positions offline.
-- Use the table of contents, tap/swipe page turns, progress slider, font size, and line spacing.
+- Use the table of contents, tap/swipe page turns, progress slider, and paginated or scrolled reading.
+- Font settings follow Readest's grouped controls: book-font override, default/minimum size, weight, serif/sans-serif/monospace families, CJK fallback, and custom font management. Import local TTF/OTF files up to 32 MiB each; installed fonts work offline.
+- Adjust paragraph margins, line/word/letter spacing, indentation, justification and hyphenation. Use Book Layout restores publisher paragraph styling. Page settings include four margins, additional margin, column gap, maximum columns and column dimensions; system safe areas remain reserved for text.
+- Sign in with an existing Readest email/password account to synchronize the EPUB library, files, covers, positions and per-book font/layout settings. Cloud books download when opened and are verified against their content hash. TTF/OTF custom fonts use the replica protocol, with an independent category switch. Manual sync, incremental pulls, retry and storage refresh are available.
 - Choose Readest's 11 built-in color schemes with Light, Dark, or System mode independently for the shelf and reader. Existing theme and typography preferences migrate on upgrade. Custom schemes and other theme features remain deferred.
 - Fill the screen with a themed background, including the status and gesture areas, while keeping controls and text clear of system indicators. The launcher and splash screen use Readest's official icon artwork; the displayed app name is Readest.
 - Configure an existing KoSync account and HTTPS server. Like Readest's prompt mode, check remote progress on book open and app return, and let the user choose when positions differ. Uploads pause until that choice. Reading changes upload after five seconds, including backwards reading; manual Send progress and Check remote are available.
-- Prefer the newer local reading-change time or server update time. Missing/tied times require a choice. An unresolvable remote XPointer pauses automatic uploads.
+- With both services enabled, Readest supplies the resume position, falling back to KoSync when Readest has none. The chosen position is sent to both services. Differing positions require a choice; an unresolvable remote locator pauses automatic uploads.
 - English and Simplified Chinese follow the system language.
 
 KoSync transfers **positions only**. Import the same EPUB into Readest and HarmonyReadest and select file-content/binary matching in Readest. Credentials never enter the reader WebView; native HTTP uses normal TLS verification and the saved credentials are encrypted with a HUKS AES-GCM key.
 
 The default server is `https://sync.koreader.rocks/`, matching [Readest's default](https://github.com/readest/readest/blob/main/apps/readest-app/src/services/constants.ts). Readest leaves KoSync disabled with empty credentials until configured. Use the same KoSync username and password in both apps; these are separate from Readest cloud credentials. This app connects to an existing account and does not register one.
 
-PDF, fixed-layout EPUB, DRM, annotations, search, OPDS, TTS, and official Readest cloud sync are deferred. Import limits are 128 MiB compressed / 512 MiB expanded. App backup/restore is disabled in this initial build so device-bound credential storage is not backed up. Files survive app restarts but not uninstall or clearing app data.
+PDF, fixed-layout EPUB, DRM, annotations, search, OPDS and TTS are deferred. The Readest card exposes the data this reader implements. Global appearance defaults and shelf theme remain device-local; per-book font/layout settings synchronize. Import limits are 128 MiB compressed / 512 MiB expanded. App backup/restore is disabled so device-bound credential storage is not backed up. Files survive app restarts but not uninstall or clearing app data.
 
 ## Build
 
@@ -51,11 +54,11 @@ See [validation status and emulator checks](docs/VALIDATION.md) for results and 
 
 ## Architecture
 
-ArkTS owns import, private files, ArkData relational persistence, preferences, lifecycle events, KoSync networking, and HUKS credentials. ArkWeb hosts a bundled EPUB parser/layout engine and emits typed metadata and position messages. A versioned bridge uses per-book session IDs, request IDs, and restricted origins; stale sessions cannot update another book. Chapter scripts and external resource loads are blocked.
+ArkTS owns import, private files, ArkData relational persistence, preferences, lifecycle events, KoSync/replica networking, and HUKS credentials. Readest access/refresh tokens use a separate HUKS vault; account passwords are used only during sign-in. Font binaries reach ArkWeb through restricted local resource responses and selected-font blob URLs, without exposing account tokens. ArkWeb hosts a bundled EPUB parser/layout engine and emits typed metadata and position messages. A versioned bridge uses per-book session IDs, request IDs, and restricted origins; stale sessions cannot update another book. Chapter scripts and external resource loads are blocked.
 
-Reading positions retain canonical EPUB CFI, the compatible XPointer, local change time, revision, pending-upload flag, and the acknowledged remote record. Pending changes are persisted before upload. Upload acknowledgment cannot clear a newer reading revision. Pending progress for a closed book is reconciled when that book is reopened; background network work is best-effort.
+Reading positions retain canonical EPUB CFI, the compatible XPointer, local change time, revision, pending-upload flag, and the acknowledged remote record. Pending changes are persisted before upload. Upload acknowledgment cannot clear a newer reading revision. Safe pending cloud positions for closed books retry automatically; conflicting positions remain pending until the book is opened and a position chosen. Background network work is best-effort.
 
-`ProgressSyncProvider` separates the sync transport from the coordinator and renderer. A later Readest-cloud provider can reuse the same reader positions and platform services. It will require Readest authentication, book/storage identity adapters, and the then-current replica encryption/cursor protocol; KoSync does not stand in for those APIs.
+`ProgressSyncProvider` separates progress transport from the coordinator and renderer. Readest books/configs use the cloud API, and custom fonts use the replica API. Both share an encrypted Readest session, while KoSync retains its separate credentials. See [sync protocol and supported scope](docs/REPLICA_SYNC.md).
 
 ## Upstream and license
 

@@ -3,7 +3,10 @@ import { BookRecord, RemoteProgress } from './Models';
 export type SyncDecision = 'none' | 'pull' | 'push' | 'conflict';
 
 export function remoteToken(remote: RemoteProgress): string {
-  return `${remote.progress || ''}|${remote.percentage ?? ''}|${remote.timestamp ?? ''}|${remote.device_id || ''}`;
+  // Config timestamps also change for typography. A cloud CFI identifies the
+  // acknowledged passage independently of those unrelated updates.
+  if (remote.cfi) return `cloud:${remote.cfi}`;
+  return `${remote.progress || remote.cfi || ''}|${remote.percentage ?? ''}|${remote.timestamp ?? ''}|${remote.device_id || ''}`;
 }
 
 export function uploadedToken(position: string, percentage: number, deviceId: string): string {
@@ -13,6 +16,8 @@ export function uploadedToken(position: string, percentage: number, deviceId: st
 export function decideSync(book: BookRecord, remote: RemoteProgress | null): SyncDecision {
   if (!remote) return book.position.cfi && book.position.xpointer ? 'push' : 'none';
   if (!book.position.cfi) return 'pull';
+  if (remote.cfi && !book.position.updatedAt) return 'pull';
+  if (remote.cfi && remote.cfi === book.position.cfi) return book.dirty ? 'push' : 'none';
   if (remote.progress === book.position.xpointer && !!remote.progress) return book.dirty ? 'push' : 'none';
   // Acknowledged or explicitly chosen reports do not prompt again unchanged.
   if (remoteToken(remote) === book.remoteToken ||

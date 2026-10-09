@@ -23,7 +23,13 @@ export class Repository {
   async list(): Promise<BookRecord[]> {
     const rows = await this.db!.querySql('SELECT record FROM books ORDER BY opened DESC');
     const books: BookRecord[] = [];
-    try { while (rows.goToNextRow()) books.push(JSON.parse(rows.getString(0)) as BookRecord); }
+    try { while (rows.goToNextRow()) {
+      const book = JSON.parse(rows.getString(0)) as BookRecord;
+      book.cloudAccount = book.cloudAccount || ''; book.cloudBook = book.cloudBook || ''; book.cloudConfig = book.cloudConfig || '';
+      book.cloudUploaded = book.cloudUploaded || false; book.cloudDeleted = book.cloudDeleted || false;
+      book.style = book.style || null; book.styleUpdatedAt = book.styleUpdatedAt || 0; book.metadataJSON = book.metadataJSON || ''; books.push(book);
+      book.styleDirty = book.styleDirty || false;
+    } }
     finally { rows.close(); }
     return books;
   }
@@ -68,6 +74,13 @@ export class Repository {
     let value = await this.prefs!.get('deviceId', '') as string;
     if (!value) { value = util.generateRandomUUID(); await this.prefs!.put('deviceId', value); await this.prefs!.flush(); }
     return value;
+  }
+
+  async cloudState(account: string): Promise<number[]> {
+    return JSON.parse(await this.prefs!.get(`cloud_${account}`, '[0,0]') as string) as number[];
+  }
+  async saveCloudState(account: string, cursors: number[]): Promise<void> {
+    await this.prefs!.put(`cloud_${account}`, JSON.stringify(cursors)); await this.prefs!.flush();
   }
 
   async importFile(uri: string, name: string): Promise<BookRecord> {

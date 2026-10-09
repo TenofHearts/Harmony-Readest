@@ -1,7 +1,8 @@
 import { common } from '@kit.AbilityKit';
 import { webview } from '@kit.ArkWeb';
 import { hilog } from '@kit.PerformanceAnalysisKit';
-import { BookRecord, KoSyncSettings, ReaderSettings, ReaderChromeState, ThemeSettings } from '../core/Models';
+import { BookRecord, CustomFont, KoSyncSettings, ReaderSettings, ReaderChromeState, ThemeSettings } from '../core/Models';
+import { numericSetting, setNumericSetting } from '../core/TypographyPolicy';
 import { BUILTIN_THEMES, ThemeDefinition, ThemePalette, themePalette, themeIsDark } from '../core/Themes';
 import { AppWindow } from '../services/AppWindow';
 import { AppController } from '../services/AppController';
@@ -47,6 +48,29 @@ struct Index {
   @State deviceName: string = 'Readest';
   @State fontSize: number = 20;
   @State lineHeight: number = 1.7;
+  @State typography: ReaderSettings = new ReaderSettings();
+  @State numericDraft: Record<string, string> = {};
+  @State fontSection: string = 'fonts';
+  @State customFonts: CustomFont[] = [];
+  @State importingFonts: boolean = false;
+  @State replicaEmail: string = '';
+  @State replicaPassword: string = '';
+  @State replicaConnected: boolean = false;
+  @State replicaAccount: string = '';
+  @State replicaEnabled: boolean = true;
+  @State replicaFonts: boolean = true;
+  @State replicaBusy: boolean = false;
+  @State replicaConnecting: boolean = false;
+  @State replicaStatus: string = 'idle';
+  @State replicaLastSynced: string = '';
+  @State replicaError: string = '';
+  @State storageUsage: string = '';
+  @State storageAvailable: string = '';
+  @State storageFiles: number = 0;
+  @State storagePercent: number = 0;
+  @State storageBusy: boolean = false;
+  @State storageError: string = '';
+  @State pendingCloudProgress: number = 0;
   @State theme: string = 'light';
   @State libraryThemeMode: string = 'auto';
   @State libraryThemeColor: string = 'default';
@@ -58,6 +82,7 @@ struct Index {
   @State safeBottom: number = 0;
   @State initialized: boolean = false;
   @State confirmRemove: string = '';
+  @State confirmFontRemove: string = '';
   @State query: string = '';
   @State viewMode: string = 'grid';
   @State sortBy: string = 'recent';
@@ -85,6 +110,7 @@ struct Index {
 
   aboutToDisappear(): void { AppWindow.changed = () => {}; this.app?.dispose(); }
   onBackPress(): boolean {
+    if (this.confirmFontRemove) { this.confirmFontRemove = ''; return true; }
     if (this.confirmRemove) { this.confirmRemove = ''; return true; }
     if (this.conflict) return true;
     if (this.settingsOpen) { this.settingsOpen = false; return true; }
@@ -95,7 +121,8 @@ struct Index {
 
   private refresh(): void {
     if (!this.app) return;
-    this.books = this.app.books.map((book: BookRecord) => JSON.parse(JSON.stringify(book)) as BookRecord);
+    this.books = this.app.books.filter((book: BookRecord) => !book.cloudDeleted && (!!book.path || book.cloudAccount === this.app!.replica.config.userId))
+      .map((book: BookRecord) => JSON.parse(JSON.stringify(book)) as BookRecord);
     this.reading = !!this.app.activeBook && !this.app.importing; this.busy = this.app.busy;
     this.controls = this.app.controls;
     this.chapter = this.app.activeBook?.position.chapter || ''; this.progress = (this.app.activeBook?.position.percentage || 0) * 100;
@@ -107,6 +134,18 @@ struct Index {
     this.remoteDevice = this.app.conflict?.device || this.t('remote'); this.remoteChapter = this.app.conflictPreview?.chapter || '';
     this.initialized = this.app.initialized && !!this.gateway?.ready;
     this.fontSize = this.app.appearance.fontSize; this.lineHeight = this.app.appearance.lineHeight;
+    this.typography = JSON.parse(JSON.stringify(this.app.appearance)) as ReaderSettings;
+    this.customFonts = this.app.fonts.fonts.slice();
+    const replica = this.app.replica;
+    this.replicaConnected = !!replica.config.userId; this.replicaAccount = replica.config.email;
+    this.replicaEnabled = replica.config.enabled; this.replicaFonts = replica.config.syncFonts;
+    this.replicaBusy = replica.busy; this.replicaStatus = replica.status; this.replicaError = replica.error;
+    this.replicaLastSynced = replica.config.lastSyncedAt ? new Date(replica.config.lastSyncedAt).toLocaleString() : this.t('never_synced');
+    this.storageBusy = replica.storageBusy; this.storageError = replica.storageError;
+    this.pendingCloudProgress = replica.pendingProgress;
+    this.storageUsage = replica.storage ? `${this.bytesLabel(replica.storage.usage)} / ${this.bytesLabel(replica.storage.quota)}` : '';
+    this.storageAvailable = replica.storage ? this.bytesLabel(Math.max(0, replica.storage.quota - replica.storage.usage)) : '';
+    this.storageFiles = replica.storage?.totalFiles || 0; this.storagePercent = Math.min(100, replica.storage?.usagePercentage || 0);
     this.libraryThemeMode = this.app.libraryTheme.themeMode; this.libraryThemeColor = this.app.libraryTheme.themeColor;
     this.readerThemeMode = this.app.appearance.themeMode; this.readerThemeColor = this.app.appearance.themeColor;
     this.systemDark = this.app.systemDark; this.theme = this.activeDark() ? 'dark' : 'light';
@@ -114,7 +153,7 @@ struct Index {
     AppWindow.apply(this.bg(), this.fg(), this.activeDark());
     if (this.conflict) this.settingsOpen = false;
     if (this.reading && this.gateway?.ready) {
-      const chrome = new ReaderChromeState(); chrome.controls = this.controls; chrome.syncEnabled = this.app.config.enabled;
+      const chrome = new ReaderChromeState(); chrome.controls = this.controls; chrome.syncEnabled = this.app.progressEnabled();
       chrome.busy = this.busy; chrome.status = this.t(`status_${this.status}`);
       const labels: Record<string, string> = { 'library': this.t('library'), 'toc': this.t('contents'), 'color': this.t('theme'), 'progress': this.t('reading_progress'),
         'font': this.t('font_layout'), 'menu': this.t('view_options'), 'close': this.t('dismiss'), 'previous': this.t('previous_page'), 'next': this.t('next_page'),
@@ -126,6 +165,44 @@ struct Index {
         'cherry': this.t('scheme_cherry'), 'sky': this.t('scheme_sky'), 'solarized': this.t('scheme_solarized'), 'gruvbox': this.t('scheme_gruvbox'),
         'nord': this.t('scheme_nord'), 'contrast': this.t('scheme_contrast'), 'sunset': this.t('scheme_sunset') };
       chrome.labels = labels;
+      labels["fontSize"] = this.t("font_size");
+      labels["minimumFontSize"] = this.t("minimum_font_size");
+      labels["fontWeight"] = this.t("font_weight");
+      labels["lineHeight"] = this.t("line_height");
+      labels["paragraphMargin"] = this.t("paragraph_margin");
+      labels["wordSpacing"] = this.t("word_spacing");
+      labels["letterSpacing"] = this.t("letter_spacing");
+      labels["textIndent"] = this.t("text_indent");
+      labels["marginTopPx"] = this.t("top_margin");
+      labels["marginBottomPx"] = this.t("bottom_margin");
+      labels["marginLeftPx"] = this.t("left_margin");
+      labels["marginRightPx"] = this.t("right_margin");
+      labels["gapPercent"] = this.t("additional_margin");
+      labels["columnGapPx"] = this.t("column_gap");
+      labels["maxColumnCount"] = this.t("max_columns");
+      labels["maxInlineSize"] = this.t("max_column_width");
+      labels["maxBlockSize"] = this.t("max_column_height");
+      labels["overrideFont"] = this.t("override_book_font");
+      labels["useBookLayout"] = this.t("use_book_layout");
+      labels["fullJustification"] = this.t("full_justification");
+      labels["hyphenation"] = this.t("hyphenation");
+      labels["scrolled"] = this.t("scrolled_mode");
+      labels["defaultFont"] = this.t("font_category");
+      labels["serifFont"] = this.t("serif_font");
+      labels["sansSerifFont"] = this.t("sans_serif_font");
+      labels["monospaceFont"] = this.t("monospace_font");
+      labels["defaultCJKFont"] = this.t("cjk_font");
+      labels["manageFonts"] = this.t("manage_fonts");
+      labels["fontSizes"] = this.t("font_size");
+      labels["preferredFont"] = this.t("preferred_font");
+      labels["paragraph"] = this.t("paragraph");
+      labels["page"] = this.t("page");
+      labels["fonts"] = this.t("fonts");
+      labels["layout"] = this.t("layout");
+      labels["serif"] = this.t("serif_font");
+      labels["sans-serif"] = this.t("sans_serif_font");
+      labels["monospace"] = this.t("monospace_font");
+      labels["bookFont"] = this.t("book_font");
       chrome.safeTop = this.safeTop; chrome.safeBottom = this.safeBottom;
       const command = this.app.command('chrome'); command.chrome = chrome; command.systemDark = this.systemDark;
       this.gateway.send(command).catch(() => {});
@@ -167,7 +244,7 @@ struct Index {
   }
   private run(action: () => Promise<void>): void { action().catch((error: Error) => { if (this.app) this.app.error = errorMessage(error); this.error = errorMessage(error); }); }
   private changeAppearance(): void {
-    const settings = new ReaderSettings(); settings.fontSize = this.fontSize; settings.lineHeight = this.lineHeight;
+    const settings = JSON.parse(JSON.stringify(this.typography)) as ReaderSettings; settings.fontSize = this.fontSize; settings.lineHeight = this.lineHeight;
     settings.themeMode = this.readerThemeMode; settings.themeColor = this.readerThemeColor;
     this.run(() => this.app!.setAppearance(settings));
   }
@@ -198,12 +275,103 @@ struct Index {
     if (!this.syncConfigured) return this.t('not_connected');
     return this.syncEnabled ? this.t('connected_as').replace('{account}', this.syncAccount) : `${this.syncAccount} · ${this.t('sync_paused')}`;
   }
-  private errorText(): string {
-    const key = this.error.split(':')[0];
+
+  private setNumber(key: string, value: number): void {
+    this.numericDraft = {};
+    const settings = JSON.parse(JSON.stringify(this.typography)) as ReaderSettings;
+    setNumericSetting(settings, key, value);
+    if (key === 'minimumFontSize') settings.fontSize = Math.max(settings.fontSize, settings.minimumFontSize);
+    if (key === 'fontSize') settings.fontSize = Math.max(settings.fontSize, settings.minimumFontSize);
+    this.typography = settings; this.fontSize = settings.fontSize; this.lineHeight = settings.lineHeight; this.changeAppearance();
+  }
+
+  private draftNumber(key: string, value: string): void {
+    const draft = JSON.parse(JSON.stringify(this.numericDraft)) as Record<string, string>; draft[key] = value; this.numericDraft = draft;
+  }
+
+  private commitNumber(key: string, min: number, max: number): void {
+    const text = this.numericDraft[key];
+    if (text !== undefined && text.trim() && Number(text) >= min && Number(text) <= max) this.setNumber(key, Number(text));
+    else this.numericDraft = {};
+  }
+
+  private setFlag(key: string, value: boolean): void {
+    const settings = JSON.parse(JSON.stringify(this.typography)) as ReaderSettings;
+    if (key === 'overrideFont') settings.overrideFont = value;
+    else if (key === 'useBookLayout') settings.useBookLayout = value;
+    else if (key === 'fullJustification') settings.fullJustification = value;
+    else if (key === 'hyphenation') settings.hyphenation = value;
+    else if (key === 'scrolled') settings.scrolled = value;
+    this.typography = settings; this.changeAppearance();
+  }
+
+  private selectedFont(key: string): string {
+    if (key === 'defaultFont') return this.typography.defaultFont;
+    if (key === 'serifFont') return this.typography.serifFont;
+    if (key === 'sansSerifFont') return this.typography.sansSerifFont;
+    if (key === 'monospaceFont') return this.typography.monospaceFont;
+    return this.typography.defaultCJKFont;
+  }
+
+  private setFont(key: string, value: string): void {
+    const settings = JSON.parse(JSON.stringify(this.typography)) as ReaderSettings;
+    if (key === 'defaultFont') settings.defaultFont = value;
+    else if (key === 'serifFont') settings.serifFont = value;
+    else if (key === 'sansSerifFont') settings.sansSerifFont = value;
+    else if (key === 'monospaceFont') settings.monospaceFont = value;
+    else settings.defaultCJKFont = value;
+    this.typography = settings; this.changeAppearance();
+  }
+
+  private fontChoices(key: string): string[] {
+    if (key === 'defaultFont') return ['serif', 'sans-serif'];
+    const first = key === 'defaultCJKFont' ? '' : key === 'sansSerifFont' ? 'sans-serif' : key === 'monospaceFont' ? 'monospace' : 'serif';
+    const choices: string[] = [first];
+    for (const family of this.customFonts.map((font: CustomFont) => font.family).concat(this.app?.fonts.systemFonts || [])) {
+      if (!choices.includes(family)) choices.push(family);
+    }
+    return choices;
+  }
+
+  private fontLabel(value: string): string {
+    if (!value) return this.t('book_font');
+    if (value === 'serif') return this.t('serif_font');
+    if (value === 'sans-serif') return this.t('sans_serif_font');
+    if (value === 'monospace') return this.t('monospace_font');
+    return value;
+  }
+
+  private importFontFiles(): void {
+    this.importingFonts = true;
+    this.app!.importFonts().catch((error: Error) => { this.app!.error = errorMessage(error); })
+      .finally(() => { this.importingFonts = false; this.refresh(); });
+  }
+
+  private connectReplica(): void {
+    this.replicaConnecting = true;
+    this.app!.replica.connect(this.replicaEmail, this.replicaPassword).then(() => { this.replicaPassword = ''; })
+      .catch((error: Error) => { this.app!.replica.error = errorMessage(error); })
+      .finally(() => { if (this.app!.replica.config.userId) this.replicaPassword = ''; this.replicaConnecting = false; this.refresh(); });
+  }
+
+  private saveReplicaOptions(enabled: boolean, fonts: boolean): void {
+    this.replicaConnecting = true;
+    this.app!.replica.options(enabled, fonts).catch((error: Error) => { this.app!.replica.error = errorMessage(error); })
+      .finally(() => { this.replicaConnecting = false; this.refresh(); });
+  }
+
+  private bytesLabel(bytes: number): string {
+    if (bytes >= 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
+    if (bytes >= 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+    if (bytes >= 1024) return `${(bytes / 1024).toFixed(1)} KB`; return `${bytes} B`;
+  }
+  private errorText(): string { return this.localizedError(this.error); }
+  private localizedError(value: string): string {
+    const key = value.split(':')[0];
     const keys: string[] = ['AUTH_FAILED', 'HTTPS_REQUIRED', 'NOT_KOSYNC', 'CREDENTIALS_REQUIRED', 'CREDENTIALS_UNAVAILABLE',
       'DUPLICATE_BOOK', 'INVALID_EPUB', 'DRM_OR_ENCRYPTED', 'FIXED_LAYOUT_UNSUPPORTED', 'BOOK_TOO_LARGE', 'UNRESOLVED_POSITION',
       'IMPORT_TIMEOUT', 'READER_TIMEOUT', 'SERVER_ERROR', 'INVALID_PROGRESS', 'IMPORT_READ_FAILED', 'IMPORT_WRITE_FAILED', 'BOOK_NOT_FOUND',
-      'NETWORK_TIMEOUT', 'NETWORK_DNS', 'NETWORK_TLS', 'NETWORK_ERROR'];
+      'NETWORK_TIMEOUT', 'NETWORK_DNS', 'NETWORK_TLS', 'NETWORK_ERROR', 'INVALID_FONT', 'INVALID_REPLICA', 'SYNC_QUOTA', 'SYNC_CLOCK'];
     return keys.includes(key) ? this.t(`error_${key.toLowerCase()}`) : this.t('error_generic');
   }
 
@@ -239,24 +407,124 @@ struct Index {
 
   @Builder
   appearanceControls() {
+    Row() {
+      ForEach(['fonts', 'layout'], (section: string) => {
+        Button(this.t(section)).layoutWeight(1).height(36).fontSize(14).fontColor(this.fg())
+          .backgroundColor(this.fontSection === section ? this.inset() : Color.Transparent).borderRadius(20)
+          .onClick(() => { this.fontSection = section; })
+      })
+    }.padding(2).width('100%').backgroundColor(this.surface()).borderRadius(24).margin({ bottom: 16 })
+    if (this.fontSection === 'fonts') { this.fontControls() } else { this.layoutControls() }
+  }
+
+  @Builder
+  numberSetting(key: string, label: string, min: number, max: number, step: number, enabled: boolean = true) {
+    Row({ space: 8 }) {
+      Text(this.t(label)).fontFamily('HarmonyOS Sans').fontSize(14).fontColor(this.fg()).layoutWeight(1)
+      Row({ space: 0 }) {
+        Button('−').width(32).height(32).padding(0).fontSize(18).fontColor(this.fg()).backgroundColor(Color.Transparent)
+          .enabled(enabled && numericSetting(this.typography, key) > min).accessibilityText(`${this.t('decrease_value')} ${this.t(label)}`)
+          .onClick(() => this.setNumber(key, Math.max(min, Number((numericSetting(this.typography, key) - step).toFixed(2)))))
+        TextInput({ text: this.numericDraft[key] !== undefined ? this.numericDraft[key] : `${Number(numericSetting(this.typography, key).toFixed(2))}` }).width(64).height(32).fontSize(14)
+          .type(min < 0 ? InputType.Normal : InputType.NUMBER_DECIMAL).textAlign(TextAlign.Center).fontColor(this.fg()).backgroundColor(Color.Transparent).enabled(enabled)
+          .accessibilityText(this.t(label)).onSubmit((enterKey: EnterKeyType, event: SubmitEvent) => { const number = Number(event.text); if (event.text.trim() && number >= min && number <= max) this.setNumber(key, number); })
+          .onChange((value: string) => this.draftNumber(key, value)).onEditChange((editing: boolean) => { if (!editing) this.commitNumber(key, min, max); })
+        Button('+').width(32).height(32).padding(0).fontSize(18).fontColor(this.fg()).backgroundColor(Color.Transparent)
+          .enabled(enabled && numericSetting(this.typography, key) < max).accessibilityText(`${this.t('increase_value')} ${this.t(label)}`)
+          .onClick(() => this.setNumber(key, Math.min(max, Number((numericSetting(this.typography, key) + step).toFixed(2)))))
+      }.backgroundColor(this.inset()).borderRadius(8)
+    }.width('100%').constraintSize({ minHeight: 56 }).padding({ left: 16, right: 12, top: 8, bottom: 8 }).opacity(enabled ? 1 : 0.45)
+  }
+
+  @Builder
+  switchSetting(key: string, label: string, value: boolean, enabled: boolean = true) {
+    Row({ space: 12 }) {
+      Text(this.t(label)).fontFamily('HarmonyOS Sans').fontSize(14).fontColor(this.fg()).layoutWeight(1)
+      Toggle({ type: ToggleType.Switch, isOn: value }).selectedColor(this.primary()).enabled(enabled).accessibilityText(this.t(label))
+        .onChange((checked: boolean) => this.setFlag(key, checked))
+    }.width('100%').height(56).padding({ left: 16, right: 16 }).opacity(enabled ? 1 : 0.45)
+  }
+
+  @Builder
+  fontSetting(key: string, label: string) {
+    Row({ space: 8 }) {
+      Text(this.t(label)).fontFamily('HarmonyOS Sans').fontSize(14).fontColor(this.fg()).layoutWeight(1)
+      Select(this.fontChoices(key).map((value: string): SelectOption => { return { value: this.fontLabel(value) }; }))
+        .value(this.fontLabel(this.selectedFont(key))).selected(this.fontChoices(key).indexOf(this.selectedFont(key)))
+        .font({ size: 13 }).fontColor(this.fg()).backgroundColor(Color.Transparent).width('56%')
+        .accessibilityText(this.t(label)).onSelect((index: number) => this.setFont(key, this.fontChoices(key)[index]))
+    }.width('100%').height(56).padding({ left: 16, right: 12 })
+  }
+
+  @Builder
+  fontControls() {
+    Column() { this.switchSetting('overrideFont', 'override_book_font', this.typography.overrideFont) }
+      .width('100%').backgroundColor(this.surface()).borderRadius(12).border({ width: 1, color: this.dividerTone() })
+    this.sectionTitle(this.t('font_size'))
+    Column() {
+      this.numberSetting('fontSize', 'default_font_size', this.typography.minimumFontSize, 120, 1)
+      this.rule()
+      this.numberSetting('minimumFontSize', 'minimum_font_size', 1, 120, 1)
+    }.width('100%').backgroundColor(this.surface()).borderRadius(12).border({ width: 1, color: this.dividerTone() })
+    this.sectionTitle(this.t('font_weight'))
+    Column() { this.numberSetting('fontWeight', 'font_weight', 100, 900, 100) }
+      .width('100%').backgroundColor(this.surface()).borderRadius(12).border({ width: 1, color: this.dividerTone() })
+    this.sectionTitle(this.t('preferred_font'))
+    Column() {
+      this.fontSetting('defaultFont', 'font_category'); this.rule()
+      this.fontSetting('serifFont', 'serif_font'); this.rule()
+      this.fontSetting('sansSerifFont', 'sans_serif_font'); this.rule()
+      this.fontSetting('monospaceFont', 'monospace_font'); this.rule()
+      this.fontSetting('defaultCJKFont', 'cjk_font')
+    }.width('100%').backgroundColor(this.surface()).borderRadius(12).border({ width: 1, color: this.dividerTone() })
+    this.sectionTitle(this.t('custom_fonts'))
     Column() {
       Row({ space: 12 }) {
-        Text(this.t('font_size')).fontFamily('HarmonyOS Sans').fontSize(14).fontColor(this.fg()).layoutWeight(1)
-        Row({ space: 2 }) {
-          Button('−').width(36).height(32).fontFamily('HarmonyOS Sans').fontSize(20).fontColor(this.fg()).backgroundColor(Color.Transparent)
-            .accessibilityText(this.t('decrease_font')).enabled(this.fontSize > 12).onClick(() => { this.fontSize -= 2; this.changeAppearance(); })
-          Text(`${this.fontSize}`).width(32).fontFamily('HarmonyOS Sans').fontSize(14).fontColor(this.fg()).textAlign(TextAlign.Center)
-          Button('+').width(36).height(32).fontFamily('HarmonyOS Sans').fontSize(20).fontColor(this.fg()).backgroundColor(Color.Transparent)
-            .accessibilityText(this.t('increase_font')).enabled(this.fontSize < 40).onClick(() => { this.fontSize += 2; this.changeAppearance(); })
-        }.backgroundColor(this.inset()).borderRadius(8)
-      }.width('100%').height(58).padding({ left: 16, right: 16 })
-      this.rule()
-      Column({ space: 4 }) {
-        Row() { Text(this.t('line_height')).fontFamily('HarmonyOS Sans').fontSize(14).fontColor(this.fg()).layoutWeight(1)
-          Text(this.lineHeight.toFixed(1)).fontFamily('HarmonyOS Sans').fontSize(14).fontColor(this.muted()) }.width('100%')
-        Slider({ value: this.lineHeight, min: 1.2, max: 2.4, step: 0.1 }).selectedColor(this.fg()).trackColor(this.inset())
-          .onChange((value: number, mode: SliderChangeMode) => { this.lineHeight = value; if (mode === SliderChangeMode.End) this.changeAppearance(); })
-      }.padding(16).width('100%')
+        Text(this.t('manage_fonts')).fontSize(14).fontColor(this.fg()).layoutWeight(1)
+        Button(this.t('add_fonts')).height(36).fontSize(13).fontColor(this.fg()).backgroundColor(this.inset()).borderRadius(8)
+          .enabled(!this.importingFonts && !this.replicaBusy).onClick(() => this.importFontFiles())
+      }.width('100%').padding(16)
+      Text(this.t('font_formats')).fontSize(12).fontColor(this.muted()).width('100%').padding({ left: 16, right: 16, bottom: 12 })
+      ForEach(this.customFonts, (font: CustomFont) => {
+        this.rule()
+        Row({ space: 8 }) {
+          Column({ space: 4 }) {
+            Text(font.name).fontFamily(font.family).fontSize(16).fontColor(this.fg()).maxLines(1)
+            Text(`${font.filename} · ${Math.round(font.byteSize / 1024)} KB`).fontSize(11).fontColor(this.muted()).maxLines(1)
+          }.layoutWeight(1).alignItems(HorizontalAlign.Start)
+          this.iconButton('close', this.t('remove_font'), () => { this.confirmFontRemove = font.id; }, !this.replicaBusy && !this.importingFonts)
+        }.width('100%').padding({ left: 16, right: 8, top: 8, bottom: 8 })
+      }, (font: CustomFont) => font.id)
+    }.width('100%').backgroundColor(this.surface()).borderRadius(12).border({ width: 1, color: this.dividerTone() })
+  }
+
+  @Builder
+  layoutControls() {
+    this.sectionTitle(this.t('reading_mode'))
+    Column() { this.switchSetting('scrolled', 'scrolled_mode', this.typography.scrolled) }
+      .width('100%').backgroundColor(this.surface()).borderRadius(12).border({ width: 1, color: this.dividerTone() })
+    this.sectionTitle(this.t('paragraph'))
+    Column() {
+      this.switchSetting('useBookLayout', 'use_book_layout', this.typography.useBookLayout); this.rule()
+      this.numberSetting('paragraphMargin', 'paragraph_margin', 0, 4, 0.1, !this.typography.useBookLayout); this.rule()
+      this.numberSetting('lineHeight', 'line_height', 1, 3, 0.1, !this.typography.useBookLayout); this.rule()
+      this.numberSetting('wordSpacing', 'word_spacing', -4, 8, 0.5, !this.typography.useBookLayout); this.rule()
+      this.numberSetting('letterSpacing', 'letter_spacing', -2, 4, 0.5, !this.typography.useBookLayout); this.rule()
+      this.numberSetting('textIndent', 'text_indent', -2, 4, 1, !this.typography.useBookLayout); this.rule()
+      this.switchSetting('fullJustification', 'full_justification', this.typography.fullJustification, !this.typography.useBookLayout); this.rule()
+      this.switchSetting('hyphenation', 'hyphenation', this.typography.hyphenation, !this.typography.useBookLayout)
+    }.width('100%').backgroundColor(this.surface()).borderRadius(12).border({ width: 1, color: this.dividerTone() })
+    this.sectionTitle(this.t('page'))
+    Column() {
+      this.numberSetting('marginTopPx', 'top_margin', 0, 144, 4); this.rule()
+      this.numberSetting('marginBottomPx', 'bottom_margin', 0, 144, 4); this.rule()
+      this.numberSetting('marginLeftPx', 'left_margin', 0, 144, 4); this.rule()
+      this.numberSetting('marginRightPx', 'right_margin', 0, 144, 4); this.rule()
+      this.numberSetting('gapPercent', 'additional_margin', 0, 30, 1); this.rule()
+      this.numberSetting('columnGapPx', 'column_gap', 0, 200, 4, !this.typography.scrolled); this.rule()
+      this.numberSetting('maxColumnCount', 'max_columns', 1, 4, 1, !this.typography.scrolled); this.rule()
+      this.numberSetting('maxInlineSize', 'max_column_width', 200, 9999, 50); this.rule()
+      this.numberSetting('maxBlockSize', 'max_column_height', 400, 9999, 50)
     }.width('100%').backgroundColor(this.surface()).borderRadius(12).border({ width: 1, color: this.dividerTone() })
   }
 
@@ -364,6 +632,7 @@ struct Index {
                     .accessibilityText(this.t('remove')).onClick(() => { this.confirmRemove = book.id; })
                 }.width('100%')
                 Text(book.author || this.t('unknown_author')).fontFamily('HarmonyOS Sans').fontSize(11).fontColor(this.muted()).maxLines(1).width('100%').textOverflow({ overflow: TextOverflow.Ellipsis })
+                if (!book.path) { Text(this.t('cloud_download')).fontSize(11).fontColor(this.primary()).width('100%') }
                 Row({ space: 8 }) {
                   Progress({ value: book.position.percentage * 100, total: 100, type: ProgressType.Linear }).color(this.muted()).backgroundColor(this.inset()).height(2).layoutWeight(1)
                   Text(`${Math.round(book.position.percentage * 100)}%`).fontFamily('HarmonyOS Sans').fontSize(10).fontColor(this.muted())
@@ -388,6 +657,7 @@ struct Index {
                 Column({ space: 6 }) {
                   Text(book.title).fontFamily('HarmonyOS Sans').fontSize(15).fontColor(this.fg()).maxLines(2).textOverflow({ overflow: TextOverflow.Ellipsis })
                   Text(book.author || this.t('unknown_author')).fontFamily('HarmonyOS Sans').fontSize(12).fontColor(this.muted()).maxLines(1)
+                  if (!book.path) { Text(this.t('cloud_download')).fontSize(11).fontColor(this.primary()) }
                   Text(`${Math.round(book.position.percentage * 100)}%`).fontFamily('HarmonyOS Sans').fontSize(11).fontColor(this.muted())
                 }.alignItems(HorizontalAlign.Start).layoutWeight(1)
                 this.iconButton('dots', this.t('remove'), () => { this.confirmRemove = book.id; })
@@ -470,11 +740,89 @@ struct Index {
   }
 
   @Builder
+  replicaSettings() {
+    Column() {
+      if (this.replicaConnected) {
+        Row() {
+          Text(this.t('enable_replica_sync')).fontSize(14).fontColor(this.fg()).layoutWeight(1)
+          Toggle({ type: ToggleType.Switch, isOn: this.replicaEnabled }).selectedColor(this.primary()).enabled(!this.replicaConnecting)
+            .onChange((value: boolean) => this.saveReplicaOptions(value, this.replicaFonts))
+        }.width('100%').height(56).padding({ left: 16, right: 16 })
+        this.rule()
+        this.syncInfoRow(this.t('account'), this.replicaAccount)
+        this.rule()
+        this.syncInfoRow(this.t('replica_data'), this.t('replica_data_value'))
+        this.rule()
+        Row() {
+          Column({ space: 4 }) {
+            Text(this.t('fonts')).fontSize(14).fontColor(this.fg())
+            Text(this.t('replica_fonts_description')).fontSize(12).fontColor(this.muted())
+          }.layoutWeight(1).alignItems(HorizontalAlign.Start)
+          Toggle({ type: ToggleType.Switch, isOn: this.replicaFonts }).selectedColor(this.primary()).enabled(!this.replicaConnecting)
+            .onChange((value: boolean) => this.saveReplicaOptions(this.replicaEnabled, value))
+        }.width('100%').padding(16)
+        this.rule()
+        this.syncInfoRow(this.t('last_synced'), this.replicaLastSynced)
+        this.rule()
+        Column({ space: 10 }) {
+          Row() {
+            Text(this.t('cloud_storage')).fontSize(14).fontColor(this.fg()).layoutWeight(1)
+            Button(this.t('refresh_storage')).fontSize(12).fontColor(this.primary()).backgroundColor(Color.Transparent)
+              .enabled(!this.storageBusy && !this.replicaConnecting).onClick(() => this.run(() => this.app!.replica.refreshStorage()))
+          }.width('100%')
+          if (this.storageUsage) {
+            Text(this.storageUsage).fontSize(14).fontColor(this.fg()).width('100%')
+            Progress({ value: this.storagePercent, total: 100, type: ProgressType.Linear }).color(this.primary()).width('100%')
+            Text(`${this.t('available_storage')}: ${this.storageAvailable} · ${this.storageFiles} ${this.t('storage_files')}`).fontSize(12).fontColor(this.muted()).width('100%')
+          } else { Text(this.t(this.storageBusy ? 'storage_loading' : 'storage_unavailable')).fontSize(12).fontColor(this.muted()).width('100%') }
+          if (this.storageError) { Text(this.localizedError(this.storageError)).fontSize(12).fontColor(this.activeDark() ? '#ff9393' : '#913d35').width('100%') }
+        }.padding(16).width('100%')
+        this.rule()
+        Column({ space: 8 }) {
+          Text(this.t('replica_description')).fontSize(12).fontColor(this.muted()).width('100%')
+          Text(this.t(`replica_status_${this.replicaStatus}`)).fontSize(12).fontColor(this.muted()).width('100%')
+          if (this.pendingCloudProgress > 0) { Text(this.t('cloud_progress_pending').replace('{count}', `${this.pendingCloudProgress}`)).fontSize(12).fontColor(this.muted()).width('100%') }
+          Row({ space: 8 }) {
+            Button(this.t('sync_replica_now')).height(40).fontSize(13).fontColor(this.primaryText()).backgroundColor(this.primary()).borderRadius(8)
+              .enabled(this.replicaEnabled && !this.replicaBusy && !this.replicaConnecting)
+              .onClick(() => this.run(() => this.app!.replica.sync()))
+            Blank()
+            Button(this.t('disconnect')).height(40).fontSize(13).fontColor(this.activeDark() ? '#ff9393' : '#913d35')
+              .backgroundColor(Color.Transparent).borderRadius(8).enabled(!this.replicaConnecting)
+              .onClick(() => {
+                this.replicaConnecting = true;
+                this.app!.replica.disconnect().catch((error: Error) => { this.app!.replica.error = errorMessage(error); })
+                  .finally(() => { this.replicaConnecting = false; this.refresh(); });
+              })
+          }.width('100%')
+        }.padding(16).width('100%')
+      } else {
+        Column({ space: 12 }) {
+          Text(this.t('replica_connect_description')).fontSize(13).fontColor(this.muted()).width('100%')
+          TextInput({ text: this.replicaEmail, placeholder: this.t('email') }).type(InputType.Email).fontSize(14).fontColor(this.fg())
+            .backgroundColor(this.inset()).borderRadius(8).enabled(!this.replicaConnecting).onChange((value: string) => { this.replicaEmail = value; })
+          TextInput({ text: this.replicaPassword, placeholder: this.t('password') }).type(InputType.Password).fontSize(14).fontColor(this.fg())
+            .backgroundColor(this.inset()).borderRadius(8).enabled(!this.replicaConnecting).onChange((value: string) => { this.replicaPassword = value; })
+          Button(this.t(this.replicaConnecting ? 'connecting' : 'sign_in')).height(40).fontSize(14).backgroundColor(this.primary()).fontColor(this.primaryText()).borderRadius(8)
+            .enabled(!this.replicaConnecting && !!this.replicaEmail.trim() && !!this.replicaPassword).onClick(() => this.connectReplica())
+        }.padding(16).width('100%')
+      }
+      if (this.replicaError) {
+        Text(this.localizedError(this.replicaError)).fontSize(12).fontColor(this.activeDark() ? '#ff9393' : '#913d35')
+          .width('100%').padding({ left: 16, right: 16, bottom: 16 })
+      }
+    }.width('100%')
+  }
+
+  @Builder
   syncService(id: string, title: string, summary: string, icon: string) {
     Column() {
       Button({ type: ButtonType.Normal }) {
         Row({ space: 12 }) {
-          Stack() { this.icon(icon, 20) }.width(36).height(36).backgroundColor(this.inset()).borderRadius(18)
+          Stack() {
+            if (id === 'readest') { Image($r('app.media.startIcon')).width(24).height(24).objectFit(ImageFit.Contain) }
+            else { this.icon(icon, 20) }
+          }.width(36).height(36).backgroundColor(this.inset()).borderRadius(18)
           Column({ space: 4 }) {
             Text(title).fontFamily('HarmonyOS Sans').fontSize(14).fontWeight(FontWeight.Medium).fontColor(this.fg()).width('100%')
             Text(summary).fontFamily('HarmonyOS Sans').fontSize(12).fontColor(this.muted()).width('100%').maxLines(2).textOverflow({ overflow: TextOverflow.Ellipsis })
@@ -486,12 +834,15 @@ struct Index {
       if (this.expandedSyncServices.includes(id)) {
         this.rule()
         if (id === 'kosync') { this.koSyncSettings() }
+        if (id === 'readest') { this.replicaSettings() }
       }
     }.width('100%').backgroundColor(this.surface()).borderRadius(12).border({ width: 1, color: this.dividerTone() })
   }
 
   @Builder
   syncSettings() {
+    this.sectionTitle(this.t('replica_syncing'))
+    this.syncService('readest', this.t('readest_replica_sync'), this.replicaConnected ? this.t('connected_as').replace('{account}', this.replicaAccount) : this.t('not_connected'), 'integrations')
     this.sectionTitle(this.t('reading_sync'))
     this.syncService('kosync', this.t('kosync_title'), this.syncSummary(), 'book')
   }
@@ -522,8 +873,10 @@ struct Index {
           if (this.settingsTab === 'font_layout') {
             this.sectionTitle(this.t('preview'))
             Column({ space: 16 }) {
-              Text('Aa').fontFamily('HarmonyOS Sans').fontSize(42).fontFamily('serif').fontColor(this.fg())
-              Text(this.t('preview_text')).fontFamily('HarmonyOS Sans').fontSize(this.fontSize).lineHeight(this.fontSize * this.lineHeight).fontFamily('serif').fontColor(this.fg()).textAlign(TextAlign.Center)
+              Text('Aa').fontSize(42).fontFamily(this.typography.defaultFont === 'serif' ? this.typography.serifFont : this.typography.sansSerifFont).fontWeight(this.typography.fontWeight).fontColor(this.fg())
+              Text(this.t('preview_text')).fontSize(Math.min(36, this.fontSize)).lineHeight(Math.min(36, this.fontSize) * this.lineHeight)
+                .fontFamily(this.typography.defaultFont === 'serif' ? this.typography.serifFont : this.typography.sansSerifFont)
+                .fontWeight(this.typography.fontWeight).fontColor(this.fg()).textAlign(TextAlign.Center)
             }.padding(28).width('100%').backgroundColor(this.surface()).borderRadius(12).border({ width: 1, color: this.dividerTone() })
             this.sectionTitle(this.t('font_layout'))
             this.appearanceControls()
@@ -616,6 +969,18 @@ struct Index {
         Column().width('100%').height('100%').backgroundColor('#80000000').onClick(() => { this.settingsOpen = false; })
         this.settingsPage()
       }
+      if (this.confirmFontRemove) {
+        Column().width('100%').height('100%').backgroundColor('#80000000').onClick(() => { this.confirmFontRemove = ''; })
+        Column({ space: 18 }) {
+          Text(this.t('remove_font_description')).fontSize(16).fontColor(this.fg())
+          Row({ space: 12 }) {
+            Button(this.t('cancel')).onClick(() => { this.confirmFontRemove = ''; })
+            Button(this.t('remove')).backgroundColor('#913d35').fontColor('#ffffff').onClick(() => {
+              const id = this.confirmFontRemove; this.confirmFontRemove = ''; this.run(() => this.app!.removeFont(id));
+            })
+          }
+        }.padding(24).width('90%').constraintSize({ maxWidth: 480 }).backgroundColor(this.bg()).borderRadius(16)
+      }
       if (this.confirmRemove) {
         Column().width('100%').height('100%').backgroundColor('#80000000').onClick(() => { this.confirmRemove = ''; })
         Column({ space: 18 }) {
@@ -623,6 +988,13 @@ struct Index {
           Row({ space: 12 }) { Button(this.t('cancel')).onClick(() => { this.confirmRemove = ''; })
             Button(this.t('remove')).backgroundColor('#913d35').onClick(() => { const book = this.app!.books.find((item: BookRecord) => item.id === this.confirmRemove);
               if (book) this.run(() => this.app!.remove(book)); this.confirmRemove = ''; }) }
+          if (this.app?.cloudEnabled()) {
+            Button(this.t('remove_cloud_book')).backgroundColor('#913d35').fontColor('#ffffff').onClick(() => {
+              const book = this.app!.books.find((item: BookRecord) => item.id === this.confirmRemove);
+              if (book) this.run(() => this.app!.removeCloud(book)); this.confirmRemove = '';
+            })
+            Text(this.t('remove_cloud_description')).fontSize(12).fontColor(this.muted())
+          }
         }.padding(24).width('90%').constraintSize({ maxWidth: 480 }).backgroundColor(this.bg()).borderRadius(16)
       }
       if (this.busy && this.reading) {

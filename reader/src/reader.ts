@@ -7,6 +7,7 @@ import { partialMD5 } from '../../vendor/readest/apps/readest-app/src/utils/md5'
 import { getCFIFromXPointer, getXPointerFromCFI, XCFI } from '../../vendor/readest/apps/readest-app/src/utils/xcfi';
 import { createChrome } from './chrome';
 import { palette, themeIsDark } from './palette';
+import { defaultTypography, typographyStyles, enforceMinimumFont, restoreMinimumFont, type ReaderFont } from './typography';
 declare const __READER_TEST__: boolean;
 
 // Only this trusted top-level page can send native events. EPUB frames are script-disabled.
@@ -24,13 +25,23 @@ let lastPosition: any;
 let eventQueue = Promise.resolve();
 let userActionUntil = 0;
 let lastTapTurnAt = 0;
-let settings = { fontSize: 20, lineHeight: 1.7, themeMode: 'auto', themeColor: 'default' };
+let settings = { ...defaultTypography };
+let fonts: ReaderFont[] = [];
+const fontSources = new Map<string, string>();
+async function loadSelectedFonts() {
+  const families = [settings.serifFont, settings.sansSerifFont, settings.monospaceFont, settings.defaultCJKFont];
+  for (const face of fonts) if (families.includes(face.family) && !fontSources.has(face.url)) {
+    const response = await fetch(face.url); if (!response.ok) throw Error('INVALID_FONT');
+    fontSources.set(face.url, URL.createObjectURL(await response.blob()));
+  }
+}
 let safeTop = 0, safeBottom = 0;
 const systemMedia = window.matchMedia('(prefers-color-scheme: dark)');
 let nativeSystemDark: boolean | undefined;
 const systemDark = () => nativeSystemDark ?? systemMedia.matches;
 const chrome = createChrome({ emit, getView: () => view, getSettings: () => settings,
   getSystemDark: systemDark,
+  getFonts: () => fonts,
   command: command => (window as any).readerReceive({ version: 1, session, ...command }) });
 systemMedia.addEventListener('change', () => appearance());
 const unsafeURL = (value: string) => /^(?:https?:|ftp:|javascript:|\/\/)/i.test(value.trim());
@@ -109,10 +120,19 @@ function appearance() {
   const { bg, fg } = palette(settings.themeColor, dark);
   document.body.style.background = bg;
   document.documentElement.style.colorScheme = dark ? 'dark' : 'light';
+  restoreMinimumFont();
   view?.renderer?.setStyles(`:root{color-scheme:${dark ? 'dark' : 'light'}}
     html,body{background:${bg}!important;color:${fg}!important}
-    body{font-size:${settings.fontSize}px!important;line-height:${settings.lineHeight}!important}
-    p,div,li{line-height:${settings.lineHeight}!important}a{color:inherit}`);
+    a{color:inherit}${typographyStyles(settings, fonts, fontSources)}`);
+  for (const { doc } of view?.renderer?.getContents() || []) enforceMinimumFont(doc, settings.minimumFontSize);
+  const attributes = {
+    'gap': `${settings.gapPercent}%`, 'column-gap': `${settings.columnGapPx}px`,
+    'margin-top': `${settings.marginTopPx + safeTop}px`, 'margin-bottom': `${settings.marginBottomPx + safeBottom}px`,
+    'margin-left': `${settings.marginLeftPx}px`, 'margin-right': `${settings.marginRightPx}px`,
+    'max-column-count': String(settings.maxColumnCount), 'max-inline-size': `${settings.maxInlineSize}px`,
+    'max-block-size': `${settings.maxBlockSize}px`, 'flow': settings.scrolled ? 'scrolled' : 'paginated'
+  };
+  for (const [key, value] of Object.entries(attributes)) if (view?.renderer?.getAttribute(key) !== value) view?.renderer?.setAttribute(key, value);
   chrome.appearance();
 }
 
@@ -180,7 +200,7 @@ async function open(command: any) {
     const loaded = await loadEPUB(file);
     book = loaded.book; archive = loaded.archive;
     emit('metadata', { metadata: { title: simpleText(book.metadata.title), author: simpleText(book.metadata.author),
-      hash: await partialMD5(file), toc: flattenTOC(book.toc ?? []) } });
+      hash: await partialMD5(file), metadataJSON: JSON.stringify(book.metadata), toc: flattenTOC(book.toc ?? []) } });
     const cover = await book.getCover();
     if (cover && cover.size < 4 * 1024 * 1024) {
       const base64 = await new Promise<string>((resolve, reject) => {
@@ -194,7 +214,7 @@ async function open(command: any) {
     if (command.metadataOnly) { emit('opened'); return; }
     view = document.createElement('foliate-view');
     document.body.append(view);
-    view.addEventListener('load', ({ detail: { doc } }: any) => bindGestures(doc));
+    view.addEventListener('load', ({ detail: { doc } }: any) => { bindGestures(doc); enforceMinimumFont(doc, settings.minimumFontSize); });
     view.addEventListener('external-link', (event: Event) => event.preventDefault());
     view.addEventListener('link', () => { userActionUntil = Date.now() + 1500; });
     await view.open(book);
@@ -246,21 +266,30 @@ async function receive(command: any) {
       const top = Math.max(0, command.chrome?.safeTop ?? 0), bottom = Math.max(0, command.chrome?.safeBottom ?? 0);
       if (top !== safeTop || bottom !== safeBottom) {
         safeTop = top; safeBottom = bottom;
-        view?.renderer?.setAttribute('margin-top', `${12 + safeTop}px`);
-        view?.renderer?.setAttribute('margin-bottom', `${12 + safeBottom}px`);
+        view?.renderer?.setAttribute('margin-top', `${settings.marginTopPx + safeTop}px`);
+        view?.renderer?.setAttribute('margin-bottom', `${settings.marginBottomPx + safeBottom}px`);
       }
     }
     else if (command.type === 'systemTheme') { /* Theme already applied above, without persisting a user choice. */ }
+    else if (command.type === 'fonts') {
+      userActionUntil = 0;
+      fonts = command.fonts || [];
+      await loadSelectedFonts();
+      appearance();
+      for (const [url, blob] of fontSources) if (!fonts.some(face => face.url === url)) { URL.revokeObjectURL(blob); fontSources.delete(url); }
+      chrome.fontsChanged();
+    }
     else if (command.type === 'back') chrome.back();
     else if (command.type === 'appearance') {
+      userActionUntil = 0;
       suppress++;
-      try { settings = { ...settings, ...command.settings }; appearance(); await eventQueue; }
+      try { settings = { ...settings, ...command.settings }; await loadSelectedFonts(); appearance(); await eventQueue; }
       finally { suppress--; }
     }
     else if (command.type === 'navigate') await view?.goTo(command.href || command.cfi);
     else if (command.type === 'fraction') await view?.goToFraction(command.percentage);
     else if (command.type === 'inspect') {
-      const cfi = await getCFIFromXPointer(command.xpointer, undefined, undefined, book);
+      const cfi = command.cfi || await getCFIFromXPointer(command.xpointer, undefined, undefined, book);
       if (!cfi || !view.resolveCFI(cfi)) throw Error('UNRESOLVED_POSITION');
       const progress = await view.getCFIProgress(cfi);
       if (!progress || !Number.isFinite(progress.fraction)) throw Error('UNRESOLVED_POSITION');
@@ -292,5 +321,5 @@ let commandQueue = Promise.resolve();
 };
 // Browser tests exercise the same parser, converter and bridge as the HAP.
 if (__READER_TEST__) (window as any).readerTest = { loadEPUB, XCFI, getCFIFromXPointer, getXPointerFromCFI, partialMD5,
-  getView: () => view, getBook: () => book, idle: () => commandQueue.then(() => eventQueue) };
+  getView: () => view, getBook: () => book, getSettings: () => ({ ...settings }), idle: () => commandQueue.then(() => eventQueue) };
 emit('ready');

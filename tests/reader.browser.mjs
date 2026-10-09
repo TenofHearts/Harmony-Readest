@@ -22,11 +22,18 @@ async function maliciousEPUB(extra = {}) {
 const evil = await maliciousEPUB();
 const continuous = await maliciousEPUB({ 'chapter.xhtml': `<html xmlns="http://www.w3.org/1999/xhtml"><head><title>Continuous pages</title></head><body><p>${Array.from({ length: 2400 }, (_, i) => `<span data-word="${i}">word${String(i).padStart(4, '0')}</span>`).join(' ')}</p></body></html>` });
 const drm = await maliciousEPUB({ 'META-INF/encryption.xml': '<encryption xmlns="urn:oasis:names:tc:opendocument:xmlns:container"><EncryptedData xmlns="http://www.w3.org/2001/04/xmlenc#"><EncryptionMethod Algorithm="http://www.w3.org/2001/04/xmlenc#aes128-cbc"/><CipherData><CipherReference URI="chapter.xhtml"/></CipherData></EncryptedData></encryption>' });
+const styled = await maliciousEPUB({ 'chapter.xhtml': '<html xmlns="http://www.w3.org/1999/xhtml"><head><title>Typography</title><style>html{font-family:Georgia}p{font-size:12px;line-height:1.2;margin:3px;text-align:left;text-indent:0;hyphens:none}code{font-family:Georgia}</style></head><body><p id="copy">Publisher font and layout. <span id="tiny" style="font-size:6px">Small print</span></p><pre><code id="code">const reading = true;</code></pre></body></html>' });
+let customFontBytes;
+for (const filename of [process.env.READER_TEST_FONT, 'C:/Windows/Fonts/arial.ttf', '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf'].filter(Boolean)) {
+  try { customFontBytes = await readFile(filename); break; } catch {}
+}
+if (!customFontBytes) throw Error('Set READER_TEST_FONT to a local TTF or OTF for custom-font rendering checks');
 const server = createServer(async (req, res) => {
   try {
     const name = req.url?.split('?')[0];
-    if (['/books/alice.epub', '/books/evil.epub', '/books/drm.epub', '/books/continuous.epub'].includes(name)) {
-      res.writeHead(200, { 'Content-Type': 'application/epub+zip' }); res.end(name.includes('continuous') ? continuous : name.includes('evil') ? evil : name.includes('drm') ? drm : epub); return;
+    if (name === '/fonts/test.ttf') { res.writeHead(200, { 'Content-Type': 'font/ttf' }); res.end(customFontBytes); return; }
+    if (['/books/alice.epub', '/books/evil.epub', '/books/drm.epub', '/books/continuous.epub', '/books/styled.epub'].includes(name)) {
+      res.writeHead(200, { 'Content-Type': 'application/epub+zip' }); res.end(name.includes('styled') ? styled : name.includes('continuous') ? continuous : name.includes('evil') ? evil : name.includes('drm') ? drm : epub); return;
     }
     if (!['/reader/index.html', '/reader/reader.js'].includes(name)) { res.writeHead(404); res.end(); return; }
     res.writeHead(200, { 'Content-Type': name.endsWith('.js') ? 'text/javascript' : 'text/html' });
@@ -203,6 +210,11 @@ try {
   assert.equal(preview.type, 'inspected'); assert.ok(preview.position.cfi); assert.ok(Number.isFinite(preview.position.percentage));
   assert.equal(await page.evaluate(() => window.readerTest.getView().lastLocation.cfi), beforeInspect);
   report.tests.push('Remote conflict preview resolves locally without moving the reader');
+  await command({ type: 'inspect', cfi: preview.position.cfi, requestId: 'cloud-preview' });
+  const cloudPreview = await page.evaluate(() => window.events.find(e => e.requestId === 'cloud-preview'));
+  assert.equal(cloudPreview.type, 'inspected'); assert.equal(cloudPreview.position.cfi, preview.position.cfi);
+  assert.equal(await page.evaluate(() => window.readerTest.getView().lastLocation.cfi), beforeInspect);
+  report.tests.push('Readest CFI-only cloud positions resolve without moving the reader');
   await command({ type: 'restore', xpointer: target, requestId: 'restore-1' });
   const restored = await page.evaluate(() => window.events.find(e => e.requestId === 'restore-1'));
   assert.equal(restored.type, 'restored'); assert.ok(restored.position.cfi);
@@ -354,6 +366,65 @@ try {
   assert.equal(await reducedPage.locator('.header-bar').evaluate(el => getComputedStyle(el).transitionDuration), '0s');
   await reduced.close();
   report.tests.push('Upstream page turns render intermediate frames; reduced motion disables page and toolbar animations');
+  await command({ type: 'fonts', fonts: [{ family: 'Test Custom', style: 'normal', weight: '400', url: `${origin}/fonts/test.ttf` }] });
+  await command({ type: 'appearance', settings: { fontSize: 20, minimumFontSize: 8, fontWeight: 400, overrideFont: false, useBookLayout: true } });
+  await command({ type: 'open', url: `${origin}/books/styled.epub` });
+  await command({ type: 'chrome', chrome: { controls: true, safeTop: 0, safeBottom: 0 } });
+  const publisher = await page.evaluate(() => {
+    const doc = window.readerTest.getView().renderer.getContents()[0].doc, p = doc.querySelector('#copy');
+    const style = doc.defaultView.getComputedStyle(p); return { family: style.fontFamily, size: style.fontSize, margin: style.marginTop };
+  });
+  assert.equal(publisher.family, 'Georgia'); assert.equal(publisher.size, '12px'); assert.equal(publisher.margin, '3px');
+  await page.locator('.mobile-tools [data-action="font"]').click();
+  assert.equal(await page.locator('[data-setting="serifFont"] option[value="Test Custom"]').count(), 1);
+  await page.locator('[data-setting="serifFont"]').selectOption('Test Custom');
+  await page.locator('[data-setting="overrideFont"]').check();
+  await page.locator('[data-setting="fontSize"]').fill('26'); await page.locator('[data-setting="fontSize"]').dispatchEvent('change');
+  await page.locator('[data-setting="minimumFontSize"]').fill('16'); await page.locator('[data-setting="minimumFontSize"]').dispatchEvent('change');
+  await page.locator('[data-setting="fontWeight"]').fill('700'); await page.locator('[data-setting="fontWeight"]').dispatchEvent('change');
+  await page.evaluate(() => window.readerTest.idle());
+  await page.locator('[data-panel="font"]').evaluate(element => { document.activeElement?.blur(); element.scrollTop = 0; });
+  await page.screenshot({ path: 'output/playwright/reader-full-fonts-phone.png' });
+  await page.locator('[data-font-tab="layout"]').click();
+  assert.equal(await page.locator('#reader-line-height').isDisabled(), true);
+  await page.locator('[data-setting="useBookLayout"]').uncheck(); await page.evaluate(() => window.readerTest.idle());
+  assert.equal(await page.locator('#reader-line-height').isDisabled(), false);
+  const readingChanges = await page.evaluate(() => window.events.filter(e => e.type === 'position' && !e.restored).length);
+  for (const [key, value] of Object.entries({ paragraphMargin: 1.5, wordSpacing: 1, letterSpacing: 0.5, textIndent: 2, marginLeftPx: 40,
+    marginRightPx: 36, marginTopPx: 24, marginBottomPx: 28, columnGapPx: 48, maxColumnCount: 3, maxInlineSize: 500, maxBlockSize: 900 })) {
+    const input = page.locator(`[data-setting="${key}"]`); await input.fill(String(value)); await input.dispatchEvent('change'); await page.evaluate(() => window.readerTest.idle());
+  }
+  await page.locator('[data-setting="fullJustification"]').check();
+  await page.locator('[data-setting="hyphenation"]').uncheck(); await page.evaluate(() => window.readerTest.idle());
+  await page.waitForTimeout(250);
+  const typography = await page.evaluate(async () => {
+    const renderer = window.readerTest.getView().renderer, doc = renderer.getContents()[0].doc;
+    await doc.fonts.ready;
+    const p = doc.defaultView.getComputedStyle(doc.querySelector('#copy')), tiny = doc.defaultView.getComputedStyle(doc.querySelector('#tiny'));
+    return { family: p.fontFamily, size: p.fontSize, weight: p.fontWeight, margin: p.marginTop, word: p.wordSpacing, letter: p.letterSpacing,
+      indent: p.textIndent, align: p.textAlign, hyphens: p.hyphens, tiny: tiny.fontSize,
+      attributes: ['margin-left','margin-right','margin-top','margin-bottom','column-gap','max-column-count','max-inline-size','max-block-size'].map(key => renderer.getAttribute(key)),
+      loaded: doc.fonts.check('26px "Test Custom"') };
+  });
+  assert.ok(typography.family.includes('Test Custom')); assert.equal(typography.loaded, true);
+  assert.deepEqual([typography.size, typography.weight, typography.margin, typography.word, typography.letter, typography.indent, typography.align, typography.hyphens, typography.tiny],
+    ['26px', '700', '39px', '1px', '0.5px', '52px', 'justify', 'none', '16px']);
+  assert.deepEqual(typography.attributes, ['40px','36px','24px','28px','48px','3','500px','900px']);
+  assert.equal(await page.evaluate(() => window.events.filter(e => e.type === 'position' && !e.restored).length), readingChanges, 'Relayout must not become a reading edit');
+  await page.screenshot({ path: 'output/playwright/reader-full-layout-phone.png' });
+  await page.locator('[data-setting="useBookLayout"]').check(); await page.evaluate(() => window.readerTest.idle());
+  assert.equal(await page.evaluate(() => {
+    const doc = window.readerTest.getView().renderer.getContents()[0].doc; return doc.defaultView.getComputedStyle(doc.querySelector('#copy')).marginTop;
+  }), '3px');
+  await page.locator('[data-setting="scrolled"]').check(); await page.evaluate(() => window.readerTest.idle());
+  assert.equal(await page.evaluate(() => window.readerTest.getView().renderer.getAttribute('flow')), 'scrolled');
+  assert.equal(await page.locator('[data-setting="maxColumnCount"]').isDisabled(), true);
+  await page.setViewportSize({ width: 1180, height: 780 }); await page.screenshot({ path: 'output/playwright/reader-full-layout-tablet.png' });
+  await command({ type: 'appearance', settings: { overrideFont: false, minimumFontSize: 8 } });
+  assert.equal(await page.evaluate(() => {
+    const doc = window.readerTest.getView().renderer.getContents()[0].doc; return doc.defaultView.getComputedStyle(doc.querySelector('#copy')).fontFamily;
+  }), 'Georgia');
+  report.tests.push('Full font and layout controls: real custom font rendering, publisher overrides, minimum size, weight, spacing, margins, columns, scroll flow, preserved publisher layout and no synthetic reading edits');
   assert.deepEqual(report.consoleErrors, []);
   await mkdir('output/playwright', { recursive: true });
   await writeFile('output/playwright/browser-results.json', JSON.stringify(report, null, 2));

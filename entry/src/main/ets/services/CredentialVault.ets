@@ -50,21 +50,30 @@ export class CredentialVault {
   }
 
   async load(): Promise<KoSyncSettings> {
+    const value = await this.loadText();
+    return value ? JSON.parse(value) as KoSyncSettings : new KoSyncSettings();
+  }
+
+  async loadText(): Promise<string> {
     const value = await this.prefs!.get('sealed', '') as string;
-    if (!value) return new KoSyncSettings();
+    if (!value) return '';
     const sealed = JSON.parse(value) as SealedCredentials;
     const plain = await this.crypt(this.base64.decodeSync(sealed.ciphertext), this.base64.decodeSync(sealed.nonce), true);
-    return JSON.parse(util.TextDecoder.create('utf-8').decodeToString(plain)) as KoSyncSettings;
+    return util.TextDecoder.create('utf-8').decodeToString(plain);
   }
 
   async save(settings: KoSyncSettings): Promise<void> {
+    await this.saveText(JSON.stringify(settings));
+  }
+
+  async saveText(value: string): Promise<void> {
     // isKeyItemExist rejects when the key is absent; hasKeyItem returns false.
     if (!await huks.hasKeyItem(this.alias, { properties: [] })) {
       await huks.generateKeyItem(this.alias, { properties: this.properties(
         huks.HuksKeyPurpose.HUKS_KEY_PURPOSE_ENCRYPT | huks.HuksKeyPurpose.HUKS_KEY_PURPOSE_DECRYPT) });
     }
     const nonce = cryptoFramework.createRandom().generateRandomSync(12).data;
-    const bytes = new util.TextEncoder().encodeInto(JSON.stringify(settings));
+    const bytes = new util.TextEncoder().encodeInto(value);
     const ciphertext = await this.crypt(bytes, nonce, false);
     const sealed: SealedCredentials = { nonce: this.base64.encodeToStringSync(nonce), ciphertext: this.base64.encodeToStringSync(ciphertext) };
     await this.prefs!.put('sealed', JSON.stringify(sealed)); await this.prefs!.flush();
