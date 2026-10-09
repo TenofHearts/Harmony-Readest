@@ -122,11 +122,11 @@
     },
     {
       "name": "module_desc",
-      "value": "HarmonyOS EPUB reader"
+      "value": "Offline EPUB reading with bookmarks, highlights, custom typography and cloud sync"
     },
     {
       "name": "EntryAbility_desc",
-      "value": "Read and sync EPUB books"
+      "value": "Read EPUB books offline and sync your library and reading progress"
     },
     {
       "name": "EntryAbility_label",
@@ -182,7 +182,7 @@
     },
     {
       "name": "offline_footer",
-      "value": "Offline first · EPUB · KoSync"
+      "value": "Offline reading · EPUB · Cloud sync"
     },
     {
       "name": "kosync_title",
@@ -362,11 +362,27 @@
     },
     {
       "name": "about_description",
-      "value": "Readest for HarmonyOS offers a focused EPUB reading experience with an organized bookshelf, customizable reading appearance, and cross-device reading progress synchronization."
+      "value": "Readest for HarmonyOS is an independent EPUB reader for phones and tablets, with offline reading, a personal bookshelf, bookmarks and highlights, customizable typography and themes, Readest cloud sync, and KOReader progress sync."
+    },
+    {
+      "name": "about_author",
+      "value": "Developed by TenofHearts"
+    },
+    {
+      "name": "about_github",
+      "value": "GitHub"
+    },
+    {
+      "name": "about_homepage",
+      "value": "Homepage"
+    },
+    {
+      "name": "about_independent",
+      "value": "An independent project, not an official Readest release."
     },
     {
       "name": "about_version",
-      "value": "Version 0.0.8 · HarmonyOS"
+      "value": "Version 0.0.9 · HarmonyOS"
     },
     {
       "name": "about_license",

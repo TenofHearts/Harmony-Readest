@@ -1,9 +1,9 @@
 {
   "name": "entry",
-  "version": "0.0.8",
-  "description": "Native HarmonyOS library and offline EPUB reader",
+  "version": "0.0.9",
+  "description": "Readest for HarmonyOS is an independent EPUB reader for phones and tablets, with offline reading, a personal bookshelf, bookmarks and highlights, customizable typography and themes, Readest cloud sync, and KOReader progress sync.",
   "main": "",
-  "author": "",
+  "author": "TenofHearts",
   "license": "AGPL-3.0-or-later",
   "dependencies": {}
 }

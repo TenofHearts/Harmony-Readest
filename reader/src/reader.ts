@@ -167,6 +167,8 @@ function bindGestures(doc: Document) {
     chrome.selection(true);
   });
   let downX = 0, downY = 0, downAt = 0;
+  let downPointer: number | undefined;
+  let downSelection: Document | undefined;
   const point = (event: PointerEvent) => {
     const frame = doc.defaultView?.frameElement?.getBoundingClientRect();
     // EPUB iframes can span many off-screen columns. Their document width is
@@ -176,16 +178,30 @@ function bindGestures(doc: Document) {
   doc.addEventListener('pointerdown', (event: PointerEvent) => {
     if (chrome.hasOverlay() || (event.target as Element)?.closest?.('#reader-chrome')) return;
     const p = point(event); downX = p.x; downY = p.y; downAt = Date.now();
+    downPointer = event.pointerId;
+    // A tap can collapse the selection before pointerup. Remember its state
+    // now so dismissing the highlight picker cannot also toggle the bars.
+    const selection = doc.getSelection();
+    downSelection = selectedText?.doc || (selection && !selection.isCollapsed && selection.toString().trim() ? doc : undefined);
     userActionUntil = Date.now() + 3000;
   });
+  doc.addEventListener('pointercancel', () => { downPointer = undefined; downSelection = undefined; });
   doc.addEventListener('pointerup', (event: PointerEvent) => {
+    if (downPointer !== event.pointerId) return;
+    const selectionAtStart = downSelection;
+    downPointer = undefined; downSelection = undefined;
     if (suppress || !view || chrome.hasOverlay() || event.button !== 0) return;
     if ((event.target as Element)?.closest?.('#reader-chrome')) return;
-    if (doc.getSelection()?.toString() || (event.target as Element)?.closest?.('a')) return;
+    if ((event.target as Element)?.closest?.('a')) return;
     const p = point(event), dx = p.x - downX, dy = p.y - downY;
     // Foliate handles touch swipes, including movement that emits pointercancel.
     // These listeners only handle deliberate, stationary taps.
     if (Date.now() - downAt > 500 || Math.abs(dx) > 10 || Math.abs(dy) > 10) return;
+    if (selectionAtStart) {
+      selectedText = undefined; selectionAtStart.getSelection()?.removeAllRanges(); chrome.selection(false);
+      return;
+    }
+    if (doc.getSelection()?.toString()) return;
     const ratio = p.x / window.innerWidth;
     if (ratio >= 1 / 3 && ratio <= 2 / 3) { chrome.toggle(); return; }
     if (ratio < 0 || ratio > 1 || Date.now() - lastTapTurnAt < 300) return;

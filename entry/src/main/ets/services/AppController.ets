@@ -43,7 +43,7 @@ export class AppController {
   busy: boolean = false;
   conflict?: RemoteProgress;
   conflictPreview?: ReadingPosition;
-  controls: boolean = true;
+  controls: boolean = false;
   initialized: boolean = false;
   importing: boolean = false;
   changed: () => void = () => {};
@@ -220,7 +220,7 @@ export class AppController {
   async open(book: BookRecord): Promise<void> {
     if (!this.reader?.ready || this.busy || this.closing || this.picking) return;
     this.epoch++; this.coordinator = undefined; this.opened = false; this.blocked = false; this.restoreFailed = false;
-    this.activeBook = book; this.conflict = undefined; this.error = ''; this.controls = true;
+    this.activeBook = book; this.conflict = undefined; this.error = ''; this.controls = false;
     this.busy = true; book.lastOpenedAt = Date.now();
     if (book.syncScope !== this.scope()) { book.syncScope = this.scope(); book.remoteToken = ''; book.dirty = this.cloudEnabled() && book.position.updatedAt > 0; }
     await this.store.save(book); this.changed();

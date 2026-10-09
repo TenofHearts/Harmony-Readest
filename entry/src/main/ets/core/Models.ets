@@ -172,7 +172,7 @@ export class ReaderCommand {
 }
 
 export class ReaderChromeState {
-  controls: boolean = true;
+  controls: boolean = false;
   syncEnabled: boolean = false;
   busy: boolean = false;
   status: string = '';

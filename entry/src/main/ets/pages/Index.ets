@@ -60,7 +60,7 @@ struct Index {
   @State books: ShelfBook[] = [];
   @State reading: boolean = false;
   @State busy: boolean = false;
-  @State controls: boolean = true;
+  @State controls: boolean = false;
   @State settingsOpen: boolean = false;
   @State chapter: string = '';
   @State progress: number = 0;
@@ -312,6 +312,12 @@ struct Index {
   private editedMode(): string { return this.themeScope === 'reader' ? this.readerThemeMode : this.libraryThemeMode; }
   private editedColor(): string { return this.themeScope === 'reader' ? this.readerThemeColor : this.libraryThemeColor; }
   private previewColors(name: string): ThemePalette { return themePalette(name, themeIsDark(this.editedMode(), this.systemDark)); }
+  private openAboutLink(url: string): void {
+    this.run(async () => {
+      const context = this.getUIContext().getHostContext() as common.UIAbilityContext;
+      await context.openLink(url);
+    });
+  }
   private openSettings(): void { this.themeScope = this.reading ? 'reader' : 'library'; this.settingsOpen = true; }
   private setTheme(mode: string, color: string): void {
     if (this.themeScope === 'reader') { this.readerThemeMode = mode; this.readerThemeColor = color; this.changeAppearance(); }
@@ -1174,18 +1180,42 @@ struct Index {
             this.syncSettings()
           } else {
             this.sectionTitle(this.t('about'))
-            Column({ space: 12 }) {
-              Image($r('app.media.startIcon')).width(48).height(48).objectFit(ImageFit.Contain)
-              Text('Readest').fontFamily(this.appFontFamily).fontSize(20).fontWeight(FontWeight.Medium).fontColor(this.fg())
-              Text(this.t('about_description')).fontFamily(this.appFontFamily).fontSize(13).fontColor(this.muted()).textAlign(TextAlign.Center)
-              Text(this.t('about_version')).fontFamily(this.appFontFamily).fontSize(12).fontColor(this.muted())
-              Text(this.t('about_license')).fontFamily(this.appFontFamily).fontSize(11).fontColor(this.muted())
-            }.padding(28).width('100%').backgroundColor(this.surface()).borderRadius(12).border({ width: 1, color: this.dividerTone() })
+            Column({ space: 20 }) {
+              Row({ space: 14 }) {
+                Image($r('app.media.startIcon')).width(48).height(48).objectFit(ImageFit.Contain)
+                Column({ space: 4 }) {
+                  Text('Readest').fontFamily(this.appFontFamily).fontSize(22).fontWeight(FontWeight.Medium).fontColor(this.fg())
+                  Text(this.t('about_version')).fontFamily(this.appFontFamily).fontSize(12).fontColor(this.muted())
+                }.alignItems(HorizontalAlign.Start).layoutWeight(1)
+              }.width('100%')
+              Text(this.t('about_description')).fontFamily(this.appFontFamily).fontSize(13).fontColor(this.muted()).width('100%')
+              this.rule()
+              Column({ space: 4 }) {
+                Text(this.t('about_author')).fontFamily(this.appFontFamily).fontSize(13).fontColor(this.fg())
+                Row({ space: 4 }) {
+                  this.aboutLink(this.t('about_github'), 'https://github.com/TenofHearts')
+                  Text('·').fontSize(12).fontColor(this.muted())
+                  this.aboutLink(this.t('about_homepage'), 'https://tenofhearts.github.io')
+                }
+              }.width('100%')
+              Column({ space: 6 }) {
+                Text(this.t('about_independent')).fontFamily(this.appFontFamily).fontSize(11).fontColor(this.muted()).textAlign(TextAlign.Center)
+                Text(this.t('about_license')).fontFamily(this.appFontFamily).fontSize(11).fontColor(this.muted()).textAlign(TextAlign.Center)
+              }.width('100%')
+            }.padding(24).width('100%').backgroundColor(this.surface()).borderRadius(12).border({ width: 1, color: this.dividerTone() })
           }
         }.width('100%').constraintSize({ maxWidth: 640 }).padding({ left: 20, right: 20, bottom: 32 })
       }.layoutWeight(1).width('100%').align(Alignment.Top)
     }.width('92%').height('85%').constraintSize({ maxWidth: 720, maxHeight: 760 }).backgroundColor(this.bg()).borderRadius(16).clip(true)
       .border({ width: 1, color: this.dividerTone() }).shadow({ radius: 24, color: '#33000000' }).accessibilityText(this.t('settings'))
+  }
+
+  @Builder
+  aboutLink(label: string, url: string) {
+    Button({ type: ButtonType.Normal }) {
+      Text(label).fontFamily(this.appFontFamily).fontSize(13).fontWeight(FontWeight.Medium).fontColor(this.primary())
+    }.constraintSize({ minHeight: 40 }).padding({ left: 12, right: 12 }).backgroundColor(Color.Transparent).borderRadius(6)
+      .accessibilityText(`${label}: ${url}`).onClick(() => this.openAboutLink(url))
   }
 
   // Readest KOSyncResolver: source label and preview live inside the choice.

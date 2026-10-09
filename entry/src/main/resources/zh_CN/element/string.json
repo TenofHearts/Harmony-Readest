@@ -122,11 +122,11 @@
     },
     {
       "name": "module_desc",
-      "value": "鸿蒙 EPUB 阅读器"
+      "value": "离线 EPUB 阅读，支持书签、高亮、自定义排版与云同步"
     },
     {
       "name": "EntryAbility_desc",
-      "value": "阅读 EPUB 电子书并同步进度"
+      "value": "离线阅读 EPUB 电子书，同步书架与阅读进度"
     },
     {
       "name": "EntryAbility_label",
@@ -182,7 +182,7 @@
     },
     {
       "name": "offline_footer",
-      "value": "离线优先 · EPUB · KoSync"
+      "value": "离线阅读 · EPUB · 云同步"
     },
     {
       "name": "kosync_title",
@@ -362,11 +362,27 @@
     },
     {
       "name": "about_description",
-      "value": "Readest 鸿蒙版为您提供简洁、专注的 EPUB 阅读体验，支持书籍管理、阅读样式设置与跨设备阅读进度同步。"
+      "value": "Readest 鸿蒙版是一款面向手机和平板的独立 EPUB 阅读器，支持离线阅读、书架管理、书签与高亮、字体排版与主题设置、Readest 云同步及 KOReader 阅读进度同步。"
+    },
+    {
+      "name": "about_author",
+      "value": "开发者：TenofHearts"
+    },
+    {
+      "name": "about_github",
+      "value": "GitHub"
+    },
+    {
+      "name": "about_homepage",
+      "value": "个人主页"
+    },
+    {
+      "name": "about_independent",
+      "value": "本项目为独立开发，非 Readest 官方发行版。"
     },
     {
       "name": "about_version",
-      "value": "版本 0.0.8 · HarmonyOS"
+      "value": "版本 0.0.9 · HarmonyOS"
     },
     {
       "name": "about_license",

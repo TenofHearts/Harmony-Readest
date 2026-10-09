@@ -1,6 +1,6 @@
 {
   "modelVersion": "6.1.1",
-  "description": "HarmonyOS EPUB reader with Readest-compatible KoSync progress",
+  "description": "Readest for HarmonyOS is an independent EPUB reader for phones and tablets, with offline reading, a personal bookshelf, bookmarks and highlights, customizable typography and themes, Readest cloud sync, and KOReader progress sync.",
   "dependencies": {
   },
   "devDependencies": {

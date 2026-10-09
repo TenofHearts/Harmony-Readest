@@ -235,13 +235,17 @@ test('shelf defaults override old book colors/fonts on every opening without rep
   const defaults = structuredClone(importFixture.settings);
   const book = importFixture.draft; book.style = { themeMode: 'light', themeColor: 'sepia', serifFont: 'Old Font', fontSize: 32, lineHeight: 2 };
   app.books = [book]; importFixture.files.add(book.path);
+  app.controls = true;
   await app.open(book); await app.events;
+  assert.equal(app.controls, false, 'Each book open resets controls to hidden');
   assert.equal(app.activeAppearance.themeMode, 'dark'); assert.equal(app.activeAppearance.themeColor, 'nord');
   assert.equal(app.activeAppearance.serifFont, 'Selected Font'); assert.equal(app.activeAppearance.fontSize, 32);
   assert.equal(importFixture.openSettings.themeColor, 'nord'); assert.deepEqual(importFixture.settings, defaults);
   await app.close();
   await app.setAppearance({ ...defaults, themeMode: 'light', themeColor: 'grass', serifFont: 'Next Font' });
+  app.controls = true;
   await app.open(book); await app.events;
+  assert.equal(app.controls, false, 'Each book open resets controls to hidden');
   assert.equal(importFixture.openSettings.themeColor, 'grass'); assert.equal(importFixture.openSettings.serifFont, 'Next Font');
   assert.equal(importFixture.openSettings.fontSize, 32); await app.close();
 });

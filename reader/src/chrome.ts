@@ -97,7 +97,7 @@ const english: Record<string, string> = {
 export function createChrome(host: ChromeHost) {
   const style = document.createElement('style'); style.textContent = `${layout}\n${motion}`; document.head.append(style);
   const root = document.createElement('div'); root.id = 'reader-chrome'; root.hidden = true; document.body.append(root);
-  let labels = { ...english }, visible = true, panel = '', title = '', toc: TocItem[] = [], fontTab = 'fonts';
+  let labels = { ...english }, visible = false, panel = '', title = '', toc: TocItem[] = [], fontTab = 'fonts';
   let progress = 0, chapter = '', syncEnabled = false, busy = false;
   let currentPage = 0, totalPages = 0;
   let annotationTab = 'highlight', selectionActive = false, status = '';
@@ -326,7 +326,7 @@ export function createChrome(host: ChromeHost) {
   }
   render();
   return {
-    open(bookTitle: string, items: TocItem[]) { title = bookTitle; toc = items; progress = 0; chapter = ''; currentPage = totalPages = 0; panel = ''; visible = true; root.hidden = true; render(); },
+    open(bookTitle: string, items: TocItem[]) { title = bookTitle; toc = items; progress = 0; chapter = ''; currentPage = totalPages = 0; panel = ''; visible = false; root.hidden = true; render(); },
     reveal() { root.hidden = false; syncVisibility(); },
     close() { root.hidden = true; panel = ''; selectionActive = false; },
     toggle() { setVisible(!visible); host.emit('toggleControls'); },
@@ -347,7 +347,7 @@ export function createChrome(host: ChromeHost) {
       root.style.setProperty('--safe-bottom', `${Math.max(0, value.safeBottom || 0)}px`);
       if (value.labels && Object.keys(value.labels).some(k => labels[k] !== value.labels[k])) { labels = { ...labels, ...value.labels }; render(); }
       syncEnabled = !!value.syncEnabled; busy = !!value.busy;
-      setVisible(value.controls !== false);
+      if (typeof value.controls === 'boolean') setVisible(value.controls);
       status = value.status || labels.status; root.querySelector<HTMLElement>('.sync-status')!.textContent = status;
       root.querySelector<HTMLButtonElement>('[data-action="sync"]')!.disabled = !syncEnabled || busy;
     }

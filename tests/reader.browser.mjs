@@ -75,6 +75,22 @@ try {
   assert.deepEqual(externalRequests, []);
   report.tests.push('Offline metadata/cover import completes without creating a renderer or contacting the internet');
   await command({ type: 'open', url: `${origin}/books/alice.epub` });
+  const assertBarsHidden = async (target, hidden) => {
+    for (const selector of ['.header-bar', '.footer-bar']) {
+      assert.equal(await target.locator(selector).getAttribute('aria-hidden'), String(hidden));
+      assert.equal(await target.locator(selector).evaluate(el => el.inert), hidden);
+    }
+  };
+  await assertBarsHidden(page, true);
+  await command({ type: 'chrome', chrome: { syncEnabled: false, status: 'Offline ready' } });
+  await assertBarsHidden(page, true);
+  await page.mouse.click(206, 390);
+  await assertBarsHidden(page, false);
+  await page.mouse.click(206, 390);
+  await assertBarsHidden(page, true);
+  await page.mouse.click(206, 390);
+  await assertBarsHidden(page, false);
+  report.tests.push('Books open with toolbar and progress bar hidden; status updates preserve that state and center taps reveal and hide both bars');
   assert.deepEqual(await page.evaluate(() => {
     const bounds = window.readerTest.getView().getBoundingClientRect();
     return { top: bounds.top, bottom: bounds.bottom, viewport: innerHeight };
@@ -438,6 +454,9 @@ try {
   await openMenuPanel('font');
   await page.waitForTimeout(200);
   const phoneClose = page.locator('[data-panel="font"] [data-action="close"]');
+  await page.locator('#reader-chrome').evaluate(async el => {
+    await Promise.all(el.getAnimations({ subtree: true }).map(animation => animation.finished.catch(() => {})));
+  });
   const phoneCloseBounds = await phoneClose.boundingBox();
   await page.locator('[data-panel="font"] .panel-scroll').evaluate(el => { el.scrollTop = el.scrollHeight; });
   assert.deepEqual(await phoneClose.boundingBox(), phoneCloseBounds, 'The phone close button also stays fixed after scrolling');
@@ -516,6 +535,7 @@ try {
   await command({ type: 'close' });
   assert.equal(await page.evaluate(() => !!window.readerTest.getView()), false);
   await command({ session: 'reopened', type: 'open', url: `${origin}/books/styled.epub`, settings: reopenSettings });
+  await assertBarsHidden(page, true);
   const reopened = await page.evaluate(async () => {
     await document.fonts.ready;
     const doc = window.readerTest.getView().renderer.getContents()[0].doc;
@@ -599,10 +619,73 @@ try {
   const savedAnnotations = await page.evaluate(() => window.events.filter(e => e.session === 'cached' && e.type === 'annotationsChanged').at(-1).annotations);
   assert.equal(savedAnnotations.length, 2); assert.equal(savedAnnotations.find(item => item.kind === 'highlight').color, '#90caf9');
   assert.match(savedAnnotations.find(item => item.kind === 'highlight').text, /^word\d+/);
+  const highlightedTap = await page.evaluate(() => {
+    const { doc } = window.readerTest.getView().renderer.getContents()[0];
+    const frame = doc.defaultView.frameElement.getBoundingClientRect();
+    const word = [...doc.querySelectorAll('[data-word]')].find(element => {
+      const bounds = element.getBoundingClientRect();
+      const x = (bounds.left + bounds.right) / 2 + frame.left;
+      return x > innerWidth / 3 && x < innerWidth * 2 / 3 && bounds.top + frame.top > 100 && bounds.bottom + frame.top < innerHeight - 100;
+    });
+    const range = doc.createRange(); range.selectNodeContents(word);
+    const selection = doc.getSelection(); selection.removeAllRanges(); selection.addRange(range);
+    doc.dispatchEvent(new Event('selectionchange'));
+    const bounds = word.getBoundingClientRect();
+    return { x: (bounds.left + bounds.right) / 2 + frame.left, y: (bounds.top + bounds.bottom) / 2 + frame.top };
+  });
+  await page.locator('[data-highlight-color="#fff176"]').click(); await page.evaluate(() => window.readerTest.idle());
+  const highlightedCFI = await page.evaluate(() => window.readerTest.getView().lastLocation.cfi);
+  for (const hidden of [true, false, true, false]) {
+    const toggles = await page.evaluate(() => window.events.filter(e => e.type === 'toggleControls').length);
+    await page.mouse.click(highlightedTap.x, highlightedTap.y);
+    await assertBarsHidden(page, hidden);
+    assert.equal(await page.evaluate(() => window.events.filter(e => e.type === 'toggleControls').length), toggles + 1);
+    assert.equal(await page.locator('.selection-bar').isVisible(), false);
+    assert.equal(await page.evaluate(() => window.readerTest.getView().lastLocation.cfi), highlightedCFI);
+  }
+  const highlightTouch = await page.context().newCDPSession(page);
+  for (const hidden of [true, false, true, false]) {
+    const toggles = await page.evaluate(() => window.events.filter(e => e.type === 'toggleControls').length);
+    await highlightTouch.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: highlightedTap.x, y: highlightedTap.y }] });
+    await highlightTouch.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+    await page.waitForTimeout(350);
+    await assertBarsHidden(page, hidden);
+    assert.equal(await page.evaluate(() => window.events.filter(e => e.type === 'toggleControls').length), toggles + 1);
+    assert.equal(await page.locator('.selection-bar').isVisible(), false);
+    assert.equal(await page.evaluate(() => window.readerTest.getView().lastLocation.cfi), highlightedCFI);
+  }
+  await selectPassage();
+  assert.equal(await page.locator('.selection-bar').isVisible(), true);
+  const beforeDismiss = await page.evaluate(() => window.events.filter(e => e.type === 'toggleControls').length);
+  await page.mouse.click(highlightedTap.x, highlightedTap.y);
+  assert.equal(await page.locator('.selection-bar').isVisible(), false);
+  assert.equal(await page.evaluate(() => window.events.filter(e => e.type === 'toggleControls').length), beforeDismiss, 'Dismissing a highlight selection must not also toggle reader bars');
+  await assertBarsHidden(page, false);
+  await page.mouse.click(highlightedTap.x, highlightedTap.y);
+  await assertBarsHidden(page, true);
+  await selectPassage();
+  const beforeTouchDismiss = await page.evaluate(() => window.events.filter(e => e.type === 'toggleControls').length);
+  await highlightTouch.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: highlightedTap.x, y: highlightedTap.y }] });
+  await highlightTouch.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+  await page.waitForTimeout(350);
+  await assertBarsHidden(page, true);
+  assert.equal(await page.locator('.selection-bar').isVisible(), false);
+  assert.equal(await page.evaluate(() => window.events.filter(e => e.type === 'toggleControls').length), beforeTouchDismiss);
+  assert.equal(await page.evaluate(() => window.readerTest.getView().lastLocation.cfi), highlightedCFI);
+  await highlightTouch.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: highlightedTap.x, y: highlightedTap.y }] });
+  await highlightTouch.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+  await page.waitForTimeout(350);
+  await assertBarsHidden(page, false);
+  await highlightTouch.detach();
+  report.tests.push('Mouse and touch taps on saved highlights toggle bars once without moving the page; selection-dismissal taps close the picker without toggling bars, and the next tap toggles normally');
+  const extra = await page.evaluate(() => window.events.filter(e => e.session === 'cached' && e.type === 'annotationsChanged').at(-1).annotations);
+  await command({ session: 'cached', type: 'removeAnnotation', id: extra.find(item => item.kind === 'highlight' && item.color === '#fff176').id });
   const highlightsBeforeStale = savedAnnotations.length;
   await command({ session: 'other-book', type: 'bookmark' });
   assert.equal(await page.evaluate(() => window.events.filter(e => e.type === 'annotationsChanged').at(-1).annotations.length), highlightsBeforeStale);
   await command({ session: 'cached', type: 'open', url: `${origin}/books/continuous.epub`, cfi: annotationStart, annotations: savedAnnotations });
+  await assertBarsHidden(page, true);
+  await command({ session: 'cached', type: 'chrome', chrome: { controls: true } });
   assert.equal(await page.locator('.mobile-tools [data-action="bookmark"]').getAttribute('aria-pressed'), 'true');
   await page.waitForFunction(() => window.readerTest.getView().renderer.getContents().some(item => item.overlayer.element.querySelector('g[fill="#90caf9"]')));
   await page.locator('.mobile-tools [data-action="highlights"]').click(); await page.locator('[data-annotation-tab="highlight"]').click();
@@ -667,9 +750,11 @@ try {
       family: doc.defaultView.getComputedStyle(doc.querySelector('#copy')).fontFamily };
   });
   assert.deepEqual(firstVisible, { opacity: '1', inert: false, chapter: true, chrome: true, family: '"Startup Font", serif' });
-  assert.equal(await startup.locator('#reader-chrome').isVisible(), true);
+  await assertBarsHidden(startup, true);
+  await startup.mouse.click(590, 250);
+  await assertBarsHidden(startup, false);
   await startup.close();
-  report.tests.push('Cold reader open with delayed font readiness keeps text and controls hidden until configured chapter/chrome fonts load, then reveals them together');
+  report.tests.push('Cold reader open with delayed font readiness keeps text and controls hidden until configured chapter/chrome fonts load, then reveals text while bars stay hidden until a center tap');
   assert.deepEqual(report.consoleErrors, []);
   await mkdir('output/playwright', { recursive: true });
   await writeFile('output/playwright/browser-results.json', JSON.stringify(report, null, 2));
