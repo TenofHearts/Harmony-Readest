@@ -1,6 +1,15 @@
 # Validation
 
+## Restore launcher artwork spacing (2026-10-10)
+
+- User feedback identified that trimming the foreground made the book too large. Native launcher conversion resizes the layer but does not restore the artwork's spacing. `scripts/sync-branding.mjs` now scales the original foreground without trimming it. Both source layers remain 1024 x 1024 PNG files; the white background fills the entire square without transparent borders or pre-rounded corners.
+- The regeneration regression checks all four normalized artwork bounds against the original composition in both resource scopes, allowing only resampling tolerance. All **118 Node tests** pass. The signed release APP builds successfully at the existing **0.0.12 / 10011** metadata, and its nested HAP preserves the original composition in the native-generated 512 x 512 foreground. Source references, compiled layer references, background pixels and release `debug: false` were checked.
+- Evidence: `output/icon-margin-tests.log`, `output/icon-margin-release-build.log` and `output/icon-margin-package-check.log`. `output/icon-margin-comparison.png` was visually inspected using the SDK launcher mask; the initial crowded icon is on the left and the restored composition is on the right. This is a generated preview, not a device screenshot.
+- Local resource checks and packaging pass. The AppGallery UX retest, including its no-inner-padding assessment, has not been run, so cloud acceptance is not claimed. Scroll feedback and reader behavior are unchanged by this correction.
+
 ## Launcher layers and scroll-boundary feedback (2026-10-10)
+
+The initial foreground composition described below was superseded by the spacing correction above.
 
 - Patch metadata is **0.0.12**, with HarmonyOS version code **10011**; app/entry/npm manifests, the npm lockfile and regenerated English/Chinese About labels agree. Release validation: `output/v0.0.12-tests.log` and `output/v0.0.12-release-build.log`.
 - The build hook previously regenerated a 432 x 432 Android foreground and a 432 x 432 SVG background, overwriting manual icon changes. `scripts/sync-branding.mjs` now generates matching 1024 x 1024 PNG layers in both AppScope and entry resources. The book artwork retains its proportions, its Android outer inset is removed, and the white background is opaque and square. Both app and ability already reference the layered resource. Splash/About artwork stays separate.

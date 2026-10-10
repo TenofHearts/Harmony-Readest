@@ -8,6 +8,19 @@ import sharp from 'sharp';
 
 const mediaPaths = ['AppScope/resources/base/media', 'entry/src/main/resources/base/media'];
 
+async function artworkBounds(image) {
+  const { data, info } = await sharp(image).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+  let left = info.width, right = -1, top = info.height, bottom = -1;
+  for (let y = 0; y < info.height; y++) for (let x = 0; x < info.width; x++) {
+    if (data[(y * info.width + x) * info.channels + 3] >= 128) {
+      left = Math.min(left, x); right = Math.max(right, x);
+      top = Math.min(top, y); bottom = Math.max(bottom, y);
+    }
+  }
+  assert.ok(right >= left && bottom >= top, 'Foreground contains visible artwork');
+  return [left / info.width, top / info.height, (right + 1) / info.width, (bottom + 1) / info.height];
+}
+
 test('branding regeneration replaces legacy icon dimensions in both launcher resource scopes', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'harmonyreadest-branding-'));
   try {
@@ -22,22 +35,20 @@ test('branding regeneration replaces legacy icon dimensions in both launcher res
       await writeFile(join(directory, path, 'readest_background.png'), 'stale background');
     }
     execFileSync(process.execPath, [resolve('scripts/sync-branding.mjs')], { cwd: directory });
+    const originalBounds = await artworkBounds('vendor/readest/apps/readest-app/src-tauri/icons/android/mipmap-xxxhdpi/ic_launcher_foreground.png');
     for (const path of mediaPaths) {
       const foreground = await readFile(join(directory, path, 'foreground.png'));
       const metadata = await sharp(foreground).metadata();
       assert.equal(metadata.width, 1024);
       assert.equal(metadata.height, 1024);
       assert.equal(metadata.hasAlpha, true);
-      const { data, info } = await sharp(foreground).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+      const data = await sharp(foreground).ensureAlpha().raw().toBuffer();
       assert.equal(data[3], 0, 'Foreground corners remain transparent for system masking');
-      let left = info.width, right = -1;
-      for (let y = 0; y < info.height; y++) for (let x = 0; x < info.width; x++) {
-        if (data[(y * info.width + x) * info.channels + 3] > 0) {
-          left = Math.min(left, x); right = Math.max(right, x);
-        }
+      const bounds = await artworkBounds(foreground);
+      for (let edge = 0; edge < bounds.length; edge++) {
+        assert.ok(Math.abs(bounds[edge] - originalBounds[edge]) <= 2 / 1024,
+          'Original foreground spacing and proportions are preserved within resampling tolerance');
       }
-      assert.ok(left <= 3, 'Android outer padding is removed, allowing for resampling at the edge');
-      assert.ok(right >= 1020, 'Artwork uses the full layer width without distortion');
       const background = await sharp(join(directory, path, 'readest_background.png')).metadata();
       assert.equal(background.width, 1024);
       assert.equal(background.height, 1024);

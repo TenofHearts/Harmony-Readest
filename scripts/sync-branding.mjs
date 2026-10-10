@@ -1,10 +1,9 @@
 import { copyFile, writeFile } from 'node:fs/promises';
 import sharp from 'sharp';
 
-// Remove Android's baked-in inset; HarmonyOS applies its own launcher mask.
+// Preserve the artwork's composition; launcher masking does not add spacing.
 const upstream = 'vendor/readest/apps/readest-app';
 const foreground = await sharp(`${upstream}/src-tauri/icons/android/mipmap-xxxhdpi/ic_launcher_foreground.png`)
-  .trim({ threshold: 0 })
   .resize(1024, 1024, { fit: 'contain', background: { r: 0, g: 0, b: 0, alpha: 0 } })
   .png().toBuffer();
 const background = await sharp({ create: { width: 1024, height: 1024, channels: 3, background: '#ffffff' } })
