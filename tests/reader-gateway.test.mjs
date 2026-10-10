@@ -74,3 +74,15 @@ test('system fonts are served as binary font resources only for registered font 
   assert.equal(gateway.resource(`${READER_ORIGIN}/fonts/../../private/secret`).code, 404);
   assert.equal(gateway.resource(`${READER_ORIGIN}/fonts/system-1`).code, 404);
 });
+
+test('reader image loading allows in-memory EPUB assets while the gateway rejects remote and file resources', () => {
+  const gateway = new ReaderGateway({}, {});
+  for (const url of ['blob:https://reader.harmonyreadest.invalid/cover', 'data:image/png;base64,AQID', 'about:blank']) {
+    assert.equal(gateway.resource(url), null);
+  }
+  for (const url of ['https://example.com/cover.jpg', 'http://example.com/tracker.png',
+    'file:///data/private/cover.jpg', `${READER_ORIGIN}/undeclared/cover.jpg`]) {
+    const response = gateway.resource(url);
+    assert.equal(response.code, 404); assert.equal(response.data, '');
+  }
+});

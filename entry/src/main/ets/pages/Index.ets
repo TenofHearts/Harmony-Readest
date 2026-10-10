@@ -1322,7 +1322,9 @@ struct Index {
   build() {
     Stack({ alignContent: Alignment.Center }) {
       Column() {
-        Web({ src: READER_URL, controller: this.web }).javaScriptAccess(true).domStorageAccess(false).fileAccess(false).onlineImageAccess(false)
+        // ArkWeb's image-loading switch also blocks EPUB blob images. The
+        // resource gateway and chapter CSP keep external requests blocked.
+        Web({ src: READER_URL, controller: this.web }).javaScriptAccess(true).domStorageAccess(false).fileAccess(false).onlineImageAccess(true)
         .javaScriptProxy({ object: this.receiver, name: 'HarmonyReader', methodList: ['post'], controller: this.web, permission: BRIDGE_PERMISSION })
         .onInterceptRequest((event) => this.gateway?.resource(event.request.getRequestUrl())!)
         .onLoadIntercept((event) => { const value = event.data.getRequestUrl(); return event.data.isMainFrame() && value !== READER_URL && value !== 'about:blank'; })

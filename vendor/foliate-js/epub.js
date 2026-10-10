@@ -1147,13 +1147,20 @@ class Loader {
                 await this.loadHref(el.getAttribute(attr), href, parents))
             const attrTasks = [
                 [...doc.querySelectorAll('link[href]')].map(el => [el, 'href']),
+                // SVG 2 covers use plain href; resolving only xlink:href
+                // leaves their images relative to a blob document. If both
+                // are present, browsers prefer href, so resolve both forms.
+                [...doc.querySelectorAll('image[href]')]
+                    .filter(el => el.namespaceURI === 'http://www.w3.org/2000/svg')
+                    .map(el => [el, 'href']),
                 [...doc.querySelectorAll('[src]')].map(el => [el, 'src']),
                 [...doc.querySelectorAll('[poster]')].map(el => [el, 'poster']),
                 [...doc.querySelectorAll('object[data]')].map(el => [el, 'data']),
             ].flat()
             await mapBounded(attrTasks, ([el, attr]) => replace(el, attr))
-            await mapBounded([...doc.querySelectorAll('[*|href]:not([href])')],
-                async el => el.setAttributeNS(NS.XLINK, 'href', await this.loadHref(
+            await mapBounded([...doc.querySelectorAll('*')]
+                .filter(el => el.hasAttributeNS(NS.XLINK, 'href')),
+                async el => el.setAttributeNS(NS.XLINK, 'xlink:href', await this.loadHref(
                     el.getAttributeNS(NS.XLINK, 'href'), href, parents)))
             await mapBounded([...doc.querySelectorAll('[srcset]')],
                 async el => el.setAttribute('srcset', await replaceSeries(el.getAttribute('srcset'),

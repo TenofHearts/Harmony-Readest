@@ -44,7 +44,7 @@ const strings = {
   about_author: ['Developed by TenofHearts', '开发者：TenofHearts'],
   about_github: ['GitHub', 'GitHub'], about_homepage: ['Homepage', '个人主页'],
   about_independent: ['An independent project, not an official Readest release.', '本项目为独立开发，非 Readest 官方发行版。'],
-  about_version: ['Version 0.0.12 · HarmonyOS', '版本 0.0.12 · HarmonyOS'], about_license: ['Licensed under AGPL-3.0-or-later', '遵循 AGPL-3.0-or-later 开源许可'],
+  about_version: ['Version 0.0.13 · HarmonyOS', '版本 0.0.13 · HarmonyOS'], about_license: ['Licensed under AGPL-3.0-or-later', '遵循 AGPL-3.0-or-later 开源许可'],
   contents: ['Contents', '目录'], reading: ['Reading', '阅读中'], sync_now: ['Send progress', '发送进度'], check_remote: ['Check remote', '检查远端'], conflict_title: ['Choose a reading position', '选择阅读位置'],
   conflict_description: ['Reading progress differs between devices. Choose where to continue; automatic uploads are paused until you choose.', '设备之间的阅读位置不同。请选择要继续阅读的位置，自动上传已暂停。'], local: ['This device', '此设备'], remote: ['Other device', '其他设备'], keep_local: ['Continue here', '在此继续'], use_remote: ['Use other position', '采用另一位置'],
   remove_description: ['Remove this book and its local reading data?', '移除此书和本地阅读记录？'], cancel: ['Cancel', '取消'], remove: ['Remove', '移除'],
