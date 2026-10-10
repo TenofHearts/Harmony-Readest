@@ -1,5 +1,13 @@
 # Validation
 
+## Launcher layers and scroll-boundary feedback (2026-10-10)
+
+- Patch metadata is **0.0.12**, with HarmonyOS version code **10011**; app/entry/npm manifests, the npm lockfile and regenerated English/Chinese About labels agree. Release validation: `output/v0.0.12-tests.log` and `output/v0.0.12-release-build.log`.
+- The build hook previously regenerated a 432 x 432 Android foreground and a 432 x 432 SVG background, overwriting manual icon changes. `scripts/sync-branding.mjs` now generates matching 1024 x 1024 PNG layers in both AppScope and entry resources. The book artwork retains its proportions, its Android outer inset is removed, and the white background is opaque and square. Both app and ability already reference the layered resource. Splash/About artwork stays separate.
+- The SVG background failed DevEco's image-transcoder step. It is replaced by PNG so both layers undergo native launcher processing. The compiled HAP contains matching 512 x 512 runtime layers; this is the compiler's processing of the 1024 x 1024 sources, consistent with [Huawei's documented launcher-image conversion](https://developer.huawei.com/consumer/cn/doc/doccenter-dev-faq/faqs-arkui-1149). No build-tool checks are bypassed.
+- With user approval, the bookshelf grid/list, font list, book-details body and settings body explicitly use `EdgeEffect.Spring` with `alwaysEnabled: true`. Pulling beyond either end briefly displaces the content and springs it back, including short lists. Dialog headings and controls remain outside their scrolling bodies. Reader pagination, page-turn animations and WebView scrolling are unchanged.
+- All **118 Node tests** pass, including a regeneration fixture that replaces stale icon files, checks both source-layer sizes, transparency, white-background pixels, removed Android padding and matching resource references. Debug HAP and release APP packaging succeed; the signed release APP's nested HAP was inspected for both launcher layers, app/ability references and `debug: false`. Evidence: `output/icon-scroll-release-build.log`. Native bounce behavior and the AppGallery UX retest have not been exercised on a device in this update.
+
 ## Floating reference previews (2026-10-10)
 
 - Reference links now open a floating preview below the marker without navigating or changing saved progress. The popup uses the pinned Readest/Foliate extraction path for EPUB/ARIA footnotes, bibliography entries, glossary definitions, superscripts, common footnote classes and isolated numeric markers. Ordinary chapter links still navigate. Unresolvable references display a local error without moving the reader.

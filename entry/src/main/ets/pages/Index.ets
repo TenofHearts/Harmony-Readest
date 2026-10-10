@@ -621,7 +621,7 @@ struct Index {
               .onClick(() => { this.setFont(this.fontPicker, family); this.fontPicker = ''; })
           }
         }, (family: string) => family)
-      }.width('100%').layoutWeight(1)
+      }.width('100%').layoutWeight(1).edgeEffect(EdgeEffect.Spring, { alwaysEnabled: true })
     }.width('90%').height('70%').constraintSize({ maxWidth: 560, maxHeight: 640 }).backgroundColor(this.bg()).borderRadius(16)
   }
 
@@ -866,6 +866,7 @@ struct Index {
             }
           }, (book: ShelfBook) => JSON.stringify([book.id, book.title, book.author, book.path, book.cover, book.position.revision, book.position.percentage]))
         }.columnsTemplate(this.columns()).columnsGap(24).rowsGap(20).layoutWeight(1).width('100%').padding({ left: 24, right: 24, bottom: 20 })
+          .edgeEffect(EdgeEffect.Spring, { alwaysEnabled: true })
       } else {
         List({ space: 0 }) {
           ListItem() {
@@ -894,6 +895,7 @@ struct Index {
             }
           }, (book: ShelfBook) => JSON.stringify([book.id, book.title, book.author, book.path, book.cover, book.position.revision, book.position.percentage]))
         }.divider({ strokeWidth: 0.5, color: this.dividerTone() }).layoutWeight(1).width('100%').padding({ left: 24, right: 24 })
+          .edgeEffect(EdgeEffect.Spring, { alwaysEnabled: true })
       }
       if (this.selectedBook) { this.bookActions() }
     }.width('100%').height('100%').padding({ top: this.safeTop, bottom: this.safeBottom }).backgroundColor(this.bg()).accessibilityLevel(this.settingsOpen || this.detailsOpen || !!this.confirmRemove ? 'no-hide-descendants' : 'auto')
@@ -980,7 +982,7 @@ struct Index {
             }
           }.width('100%').padding({ left: 12, right: 12, top: 4, bottom: 12 })
         }.width('100%').padding({ left: 24, right: 24, bottom: 24 })
-      }.layoutWeight(1).width('100%')
+      }.layoutWeight(1).width('100%').edgeEffect(EdgeEffect.Spring, { alwaysEnabled: true })
     }.width('92%').height('80%').constraintSize({ maxWidth: 480, maxHeight: 640 }).backgroundColor(this.bg()).borderRadius(16).clip(true)
       .shadow({ radius: 24, color: '#33000000' })
   }
@@ -1289,7 +1291,7 @@ struct Index {
             }.padding(24).width('100%').backgroundColor(this.surface()).borderRadius(12).border({ width: 1, color: this.dividerTone() })
           }
         }.width('100%').constraintSize({ maxWidth: 640 }).padding({ left: 20, right: 20, bottom: 32 })
-      }.layoutWeight(1).width('100%').align(Alignment.Top)
+      }.layoutWeight(1).width('100%').align(Alignment.Top).edgeEffect(EdgeEffect.Spring, { alwaysEnabled: true })
     }.width('92%').height('85%').constraintSize({ maxWidth: 720, maxHeight: 760 }).backgroundColor(this.bg()).borderRadius(16).clip(true)
       .border({ width: 1, color: this.dividerTone() }).shadow({ radius: 24, color: '#33000000' }).accessibilityText(this.t('settings'))
   }

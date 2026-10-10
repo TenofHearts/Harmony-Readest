@@ -1,6 +1,6 @@
 {
   "name": "harmonyreadest-reader",
-  "version": "0.0.11",
+  "version": "0.0.12",
   "private": true,
   "description": "Readest for HarmonyOS is an independent EPUB reader for phones and tablets, with offline reading, a personal bookshelf, bookmarks and highlights, customizable typography and themes, Readest cloud sync, and KOReader progress sync.",
   "author": "TenofHearts",
@@ -19,6 +19,7 @@
   "devDependencies": {
     "esbuild": "0.25.12",
     "playwright": "1.56.1",
+    "sharp": "0.35.5",
     "tinycolor2": "1.6.0"
   }
 }
