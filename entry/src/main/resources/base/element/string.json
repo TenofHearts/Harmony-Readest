@@ -130,7 +130,7 @@
     },
     {
       "name": "EntryAbility_label",
-      "value": "HReadest"
+      "value": "Attune"
     },
     {
       "name": "library_subtitle",
@@ -402,7 +402,7 @@
     },
     {
       "name": "about_description",
-      "value": "HReadest is an independent EPUB reader for phones and tablets, with offline reading, a personal bookshelf, bookmarks and highlights, customizable typography and themes, Readest cloud sync, and KOReader progress sync."
+      "value": "Attune is an independent EPUB reader for phones and tablets, with offline reading, a personal bookshelf, bookmarks and highlights, customizable typography and themes, Readest cloud sync, and KOReader progress sync."
     },
     {
       "name": "about_author",
@@ -446,7 +446,7 @@
     },
     {
       "name": "about_version",
-      "value": "Version 0.0.13 · HarmonyOS"
+      "value": "Version 0.1.0 · HarmonyOS"
     },
     {
       "name": "about_license",

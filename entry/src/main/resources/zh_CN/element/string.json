@@ -130,7 +130,7 @@
     },
     {
       "name": "EntryAbility_label",
-      "value": "HReadest"
+      "value": "墨契"
     },
     {
       "name": "library_subtitle",
@@ -402,7 +402,7 @@
     },
     {
       "name": "about_description",
-      "value": "HReadest 是一款面向手机和平板的独立 EPUB 阅读器，支持离线阅读、书架管理、书签与高亮、字体排版与主题设置、Readest 云同步及 KOReader 阅读进度同步。"
+      "value": "墨契 是一款面向手机和平板的独立 EPUB 阅读器，支持离线阅读、书架管理、书签与高亮、字体排版与主题设置、Readest 云同步及 KOReader 阅读进度同步。"
     },
     {
       "name": "about_author",
@@ -446,7 +446,7 @@
     },
     {
       "name": "about_version",
-      "value": "版本 0.0.13 · HarmonyOS"
+      "value": "版本 0.1.0 · HarmonyOS"
     },
     {
       "name": "about_license",

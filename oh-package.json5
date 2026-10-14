@@ -1,6 +1,6 @@
 {
   "modelVersion": "6.1.1",
-  "description": "HReadest is an independent EPUB reader for phones and tablets, with offline reading, a personal bookshelf, bookmarks and highlights, customizable typography and themes, Readest cloud sync, and KOReader progress sync.",
+  "description": "墨契 Attune is an independent EPUB reader for phones and tablets, with offline reading, a personal bookshelf, bookmarks and highlights, customizable typography and themes, Readest cloud sync, and KOReader progress sync.",
   "dependencies": {
   },
   "devDependencies": {

@@ -1,23 +1,23 @@
-# HReadest public release checklist
+# 墨契 Attune public release checklist
 
 This checklist excludes signing and build configuration, which the maintainer has separately confirmed with Huawei. Package checks do not establish permission to use another project's branding or a hosted service.
 
 ## Project disclosures
 
-- [x] Identify Jin Ye as the HReadest developer, without removing upstream attribution.
+- [x] Identify Jin Ye as the 墨契 Attune developer, without removing upstream attribution.
 - [x] Link About directly to the project source and issue tracker.
-- [x] Offer offline licenses/credits and the HReadest privacy notice in About.
+- [x] Offer offline licenses/credits and the 墨契 Attune privacy notice in About.
 - [x] Preserve pinned upstream revisions, AGPL text, third-party notices and original vendored license files.
-- [x] Describe HReadest as independent and unofficial.
+- [x] Describe 墨契 Attune as independent and unofficial.
 - [ ] Review the privacy notice whenever sync, logging, analytics, permissions or storage behavior changes.
 
 ## Questions for the Readest team
 
-- [ ] Confirm expectations for the HReadest name and modified book icon. Provide the exact icon and screenshots; do not treat a lack of response as approval.
+- [ ] Confirm expectations for the 墨契 Attune name and modified book icon. Provide the exact icon and screenshots; do not treat a lack of response as approval.
 - [ ] Confirm supported third-party use of the production cloud API and public Supabase client configuration; ask whether a separate client registration/authentication flow is preferred.
 - [ ] Discuss schema compatibility, tombstones, cursor pagination, font replicas, unknown-field preservation and upload ordering.
 - [ ] Ask about polling frequency, quotas, retry/backoff expectations, client/version identification and API-change announcements.
-- [ ] Agree on compatibility wording and where users should report HReadest versus service issues.
+- [ ] Agree on compatibility wording and where users should report 墨契 Attune versus service issues.
 
 These are questions about branding and service arrangements, not a request to waive rights already granted by the applicable open-source licenses.
 
@@ -25,7 +25,7 @@ These are questions about branding and service arrangements, not a request to wa
 
 Use disposable accounts and books, not a personal library. Automated fixtures are useful but do not replace these checks.
 
-- [ ] Test HReadest and an official Readest client against the same account in both directions.
+- [ ] Test 墨契 Attune and an official Readest client against the same account in both directions.
 - [ ] Test progress conflicts, rereading backwards, offline recovery and unresolved locators without silent overwrite.
 - [ ] Test bookmark/highlight creation, simultaneous editing and deletion; preserve unsupported fields.
 - [ ] Test fonts, interrupted uploads/downloads, quota failures, token refresh and category switches.

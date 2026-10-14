@@ -1,18 +1,18 @@
-# HReadest Privacy Notice
+# 墨契 Attune Privacy Notice
 
 Effective date: 14 October 2026
 
-HReadest is an independent HarmonyOS EPUB reader developed by Jin Ye. It is not an official Readest release. This notice describes HReadest, not the separate services operated by Readest, KOReader, Huawei, or your chosen server provider.
+墨契 Attune is an independent HarmonyOS EPUB reader developed by Jin Ye. It is not an official Readest release. This notice describes 墨契 Attune, not the separate services operated by Readest, KOReader, Huawei, or your chosen server provider.
 
 ## Offline reading and local storage
 
-Without connecting a sync account, reading does not require sending your books to a server. HReadest stores imported EPUB copies, covers, reading positions, bookmarks, highlights, imported fonts, and preferences in app storage. Books and fonts are selected through HarmonyOS file pickers. System fonts are enumerated to offer font choices. HReadest has no advertising or analytics SDK and does not send usage analytics to the developer.
+Without connecting a sync account, reading does not require sending your books to a server. 墨契 Attune stores imported EPUB copies, covers, reading positions, bookmarks, highlights, imported fonts, and preferences in app storage. Books and fonts are selected through HarmonyOS file pickers. System fonts are enumerated to offer font choices. 墨契 Attune has no advertising or analytics SDK and does not send usage analytics to the developer.
 
 ## Optional Readest sync
 
-When you sign in, your email and password are sent over HTTPS to Readest's authentication service (`readest.supabase.co`). HReadest does not persist the Readest password. Account identifiers and access/refresh tokens are retained locally to maintain the connection; credentials are encrypted using a device-bound HarmonyOS HUKS key. Books, covers, library metadata, reading positions, per-book settings, bookmarks/highlights, and custom fonts can be exchanged with Readest's API (`web.readest.com`) and the storage services referenced by its signed URLs. Fonts and annotations have separate switches; disabling them does not disable book and reading-position sync. Enabled syncing can run automatically while the app is active, including when connectivity returns.
+When you sign in, your email and password are sent over HTTPS to Readest's authentication service (`readest.supabase.co`). 墨契 Attune does not persist the Readest password. Account identifiers and access/refresh tokens are retained locally to maintain the connection; credentials are encrypted using a device-bound HarmonyOS HUKS key. Books, covers, library metadata, reading positions, per-book settings, bookmarks/highlights, and custom fonts can be exchanged with Readest's API (`web.readest.com`) and the storage services referenced by its signed URLs. Fonts and annotations have separate switches; disabling them does not disable book and reading-position sync. Enabled syncing can run automatically while the app is active, including when connectivity returns.
 
-Readest and its infrastructure providers receive these requests and may process network information such as your IP address. Their storage locations, retention practices, account controls, and service terms are controlled by them. See https://readest.com/privacy-policy and https://readest.com/terms-of-service. HReadest does not promise end-to-end encryption of synced content; HTTPS protects transport, while the local credential vault protects credentials, not the entire book library.
+Readest and its infrastructure providers receive these requests and may process network information such as your IP address. Their storage locations, retention practices, account controls, and service terms are controlled by them. See https://readest.com/privacy-policy and https://readest.com/terms-of-service. 墨契 Attune does not promise end-to-end encryption of synced content; HTTPS protects transport, while the local credential vault protects credentials, not the entire book library.
 
 ## Optional KOReader progress sync
 
@@ -20,7 +20,7 @@ Connecting KoSync sends authentication information and reading progress to the H
 
 ## Sharing, links, and diagnostics
 
-Sharing a book sends its file to the application you choose in the HarmonyOS share panel. Source, homepage, support, and other external links open through the system and are subject to the destination's policies. If you submit a public GitHub issue, its contents are public: do not include passwords, tokens, private books, or personal reading data. HReadest writes operational errors to system logs; these are not automatically uploaded to the developer. Inspect logs before choosing to share them. HarmonyOS may independently process system diagnostics under its own settings and policies.
+Sharing a book sends its file to the application you choose in the HarmonyOS share panel. Source, homepage, support, and other external links open through the system and are subject to the destination's policies. If you submit a public GitHub issue, its contents are public: do not include passwords, tokens, private books, or personal reading data. 墨契 Attune writes operational errors to system logs; these are not automatically uploaded to the developer. Inspect logs before choosing to share them. HarmonyOS may independently process system diagnostics under its own settings and policies.
 
 ## Your controls and deletion
 
@@ -30,15 +30,15 @@ Local data is retained until you remove it, clear app data, or uninstall the app
 
 ## Contact and changes
 
-For HReadest privacy questions, contact Jin Ye through https://github.com/TenofHearts/Harmony-Readest/issues. Use that public channel to request a private contact method before disclosing sensitive information. For Readest or KoSync account requests, contact the relevant service operator. Material changes to HReadest's data handling will be described in an updated notice and release notes. The notice date identifies this version.
+For 墨契 Attune privacy questions, contact Jin Ye through https://github.com/TenofHearts/Harmony-Readest/issues. Use that public channel to request a private contact method before disclosing sensitive information. For Readest or KoSync account requests, contact the relevant service operator. Material changes to 墨契 Attune's data handling will be described in an updated notice and release notes. The notice date identifies this version.
 
 ---
 
-# HReadest 隐私说明
+# 墨契 Attune 隐私说明
 
 生效日期：2026 年 10 月 14 日
 
-HReadest 是由 Jin Ye 开发的独立鸿蒙 EPUB 阅读器，非 Readest 官方发行版。本说明适用于 HReadest；Readest、KOReader、华为及自选服务器的服务由各自运营方负责。
+墨契 Attune 是由 Jin Ye 开发的独立鸿蒙 EPUB 阅读器，非 Readest 官方发行版。本说明适用于 墨契 Attune；Readest、KOReader、华为及自选服务器的服务由各自运营方负责。
 
 ## 本地阅读
 
@@ -66,4 +66,4 @@ KoSync 向您选择的 HTTPS 服务器（默认为 sync.koreader.rocks）发送�
 
 ## 联系与更新
 
-HReadest 隐私问题请通过 https://github.com/TenofHearts/Harmony-Readest/issues 联系 Jin Ye。该渠道公开；披露敏感信息前，请先请求私下联系方法。Readest 或 KoSync 账户问题请联系相应运营方。数据处理发生重大变化时，将更新本说明及版本说明；生效日期用于识别本说明版本。
+墨契 Attune 隐私问题请通过 https://github.com/TenofHearts/Harmony-Readest/issues 联系 Jin Ye。该渠道公开；披露敏感信息前，请先请求私下联系方法。Readest 或 KoSync 账户问题请联系相应运营方。数据处理发生重大变化时，将更新本说明及版本说明；生效日期用于识别本说明版本。

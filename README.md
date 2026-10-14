@@ -1,8 +1,8 @@
 <p align="center">
-  <img src="entry/src/main/resources/base/media/startIcon.png" alt="HReadest app icon: an open book" width="128" height="128">
+  <img src="entry/src/main/resources/base/media/startIcon.png" alt="墨契 Attune app icon: an open book" width="128" height="128">
 </p>
 
-<h1 align="center">HReadest</h1>
+<h1 align="center">墨契 Attune</h1>
 
 <p align="center">
   <img src="https://img.shields.io/badge/Platform-HarmonyOS-007DFF?style=flat-square" alt="Platform: HarmonyOS">
@@ -11,7 +11,7 @@
   <a href="https://github.com/TenofHearts"><img src="https://img.shields.io/badge/GitHub-TenofHearts-181717?style=flat-square&amp;logo=github" alt="TenofHearts on GitHub"></a>
 </p>
 
-HReadest is an independent EPUB reader for phones and tablets, with offline reading, a personal bookshelf, bookmarks and highlights, customizable typography and themes, Readest cloud sync, and KOReader progress sync.
+墨契 Attune is an independent EPUB reader for phones and tablets, with offline reading, a personal bookshelf, bookmarks and highlights, customizable typography and themes, Readest cloud sync, and KOReader progress sync.
 
 ## Reading and bookshelf
 
@@ -37,8 +37,8 @@ Choose English, Simplified Chinese, or the system language. The reader supports 
 
 ## Source, licensing, privacy and support
 
-Developed by Jin Ye. HReadest is an independent project, not an official Readest release. Adapted Readest and Foliate components retain their upstream copyrights. See [LICENSE](LICENSE), [third-party credits](THIRD_PARTY_NOTICES.md), and the [HReadest privacy notice](PRIVACY.md) (English and 简体中文). The privacy notice and full license texts are also available offline in Settings → About.
+Developed by Jin Ye. 墨契 Attune is an independent project, not an official Readest release. Adapted Readest and Foliate components retain their upstream copyrights. See [LICENSE](LICENSE), [third-party credits](THIRD_PARTY_NOTICES.md), and the [墨契 Attune privacy notice](PRIVACY.md) (English and 简体中文). The privacy notice and full license texts are also available offline in Settings → About.
 
-[Project source](https://github.com/TenofHearts/Harmony-Readest) · [HReadest support](https://github.com/TenofHearts/Harmony-Readest/issues). Do not put credentials or private books in public issues. Readest is a separate service; compatibility does not imply endorsement.
+[Project source](https://github.com/TenofHearts/Harmony-Readest) · [墨契 Attune support](https://github.com/TenofHearts/Harmony-Readest/issues). Do not put credentials or private books in public issues. Readest is a separate service; compatibility does not imply endorsement.
 
 Before publishing a release, complete the [release checklist](docs/RELEASE_CHECKLIST.md), including release-specific source links and live sync acceptance. Existing automated sync fixtures do not establish full live cross-client compatibility.

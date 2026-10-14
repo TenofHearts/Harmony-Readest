@@ -12,7 +12,7 @@ const strings = {
   empty_bookmarks: ['No bookmarks yet.', '还没有书签。'], empty_highlights: ['No highlights yet.', '还没有高亮。'],
   highlight_yellow: ['Yellow', '黄色'], highlight_green: ['Green', '绿色'], highlight_blue: ['Blue', '蓝色'],
   highlight_pink: ['Pink', '粉色'], highlight_purple: ['Purple', '紫色'],
-  module_desc: ['Offline EPUB reading with bookmarks, highlights, custom typography and cloud sync', '离线 EPUB 阅读，支持书签、高亮、自定义排版与云同步'], EntryAbility_desc: ['Read EPUB books offline and sync your library and reading progress', '离线阅读 EPUB 电子书，同步书架与阅读进度'], EntryAbility_label: ['HReadest', 'HReadest'],
+  module_desc: ['Offline EPUB reading with bookmarks, highlights, custom typography and cloud sync', '离线 EPUB 阅读，支持书签、高亮、自定义排版与云同步'], EntryAbility_desc: ['Read EPUB books offline and sync your library and reading progress', '离线阅读 EPUB 电子书，同步书架与阅读进度'], EntryAbility_label: ['Attune', '墨契'],
   library_subtitle: ['Your books, at your own pace.', '随时翻开，自在阅读。'], library: ['Bookshelf', '书架'], books: ['books', '本书'], import: ['Import EPUB', '导入 EPUB'],
   settings: ['Settings', '设置'], importing: ['Importing and checking EPUB…', '正在导入并检查 EPUB…'], empty_title: ['Your library is empty', '书架还是空的'],
   app_language: ['App language', '应用语言'], language_system: ['System', '跟随系统'],
@@ -40,12 +40,12 @@ const strings = {
   scheme_default: ['Default', '默认'], scheme_gray: ['Gray', '灰色'], scheme_sepia: ['Sepia', '褐色'], scheme_grass: ['Grass', '草绿'],
   scheme_cherry: ['Cherry', '樱桃'], scheme_sky: ['Sky', '天空'], scheme_solarized: ['Solarized', 'Solarized'], scheme_gruvbox: ['Gruvbox', 'Gruvbox'],
   scheme_nord: ['Nord', 'Nord'], scheme_contrast: ['Contrast', '高对比度'], scheme_sunset: ['Sunset', '日落'],
-  about_description: ["HReadest is an independent EPUB reader for phones and tablets, with offline reading, a personal bookshelf, bookmarks and highlights, customizable typography and themes, Readest cloud sync, and KOReader progress sync.","HReadest 是一款面向手机和平板的独立 EPUB 阅读器，支持离线阅读、书架管理、书签与高亮、字体排版与主题设置、Readest 云同步及 KOReader 阅读进度同步。"],
+  about_description: ["Attune is an independent EPUB reader for phones and tablets, with offline reading, a personal bookshelf, bookmarks and highlights, customizable typography and themes, Readest cloud sync, and KOReader progress sync.","墨契 是一款面向手机和平板的独立 EPUB 阅读器，支持离线阅读、书架管理、书签与高亮、字体排版与主题设置、Readest 云同步及 KOReader 阅读进度同步。"],
   about_author: ['Developed by Jin Ye', '开发者：Jin Ye'],
   about_source: ['Source code', '源代码'], about_licenses: ['Licenses & credits', '许可与致谢'], about_privacy: ['Privacy notice', '隐私说明'], about_support: ['Support', '问题反馈'], legal_loading: ['Loading…', '正在加载…'], legal_error: ['Could not load this document. Please return and try again.', '无法加载文档，请返回后重试。'],
   about_github: ['GitHub', 'GitHub'], about_homepage: ['Homepage', '个人主页'],
   about_independent: ['An independent project, not an official Readest release.', '本项目为独立开发，非 Readest 官方发行版。'],
-  about_version: ['Version 0.0.13 · HarmonyOS', '版本 0.0.13 · HarmonyOS'], about_license: ['Licensed under AGPL-3.0-or-later', '遵循 AGPL-3.0-or-later 开源许可'],
+  about_version: ['Version 0.1.0 · HarmonyOS', '版本 0.1.0 · HarmonyOS'], about_license: ['Licensed under AGPL-3.0-or-later', '遵循 AGPL-3.0-or-later 开源许可'],
   contents: ['Contents', '目录'], reading: ['Reading', '阅读中'], sync_now: ['Send progress', '发送进度'], check_remote: ['Check remote', '检查远端'], conflict_title: ['Choose a reading position', '选择阅读位置'],
   conflict_description: ['Reading progress differs between devices. Choose where to continue; automatic uploads are paused until you choose.', '设备之间的阅读位置不同。请选择要继续阅读的位置，自动上传已暂停。'], local: ['This device', '此设备'], remote: ['Other device', '其他设备'], keep_local: ['Continue here', '在此继续'], use_remote: ['Use other position', '采用另一位置'],
   remove_description: ['Remove this book and its local reading data?', '移除此书和本地阅读记录？'], cancel: ['Cancel', '取消'], remove: ['Remove', '移除'],
@@ -122,7 +122,11 @@ for (const [locale, index] of [['base', 0], ['zh_CN', 1]]) {
   await mkdir(dir, { recursive: true });
   await writeFile(`${dir}/string.json`, JSON.stringify({ string: Object.entries(strings).map(([name, values]) => ({ name, value: values[index] })) }, null, 2) + '\n');
 }
-await writeFile('AppScope/resources/base/element/string.json', JSON.stringify({ string: [{ name: 'app_name', value: 'HReadest' }] }, null, 2) + '\n');
+for (const [locale, name] of [['base', 'Attune'], ['zh_CN', '墨契']]) {
+  const dir = `AppScope/resources/${locale}/element`;
+  await mkdir(dir, { recursive: true });
+  await writeFile(`${dir}/string.json`, JSON.stringify({ string: [{ name: 'app_name', value: name }] }, null, 2) + '\n');
+}
 
 // Ship the same privacy notice and license texts offline in About.
 await mkdir('entry/src/main/resources/rawfile/legal', { recursive: true });

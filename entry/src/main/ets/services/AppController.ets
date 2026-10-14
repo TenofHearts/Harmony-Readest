@@ -202,7 +202,7 @@ export class AppController {
     const config = new KoSyncSettings();
     config.serverUrl = this.config.serverUrl; config.username = this.config.username;
     config.password = this.config.password; config.userkey = this.config.userkey; config.basicKey = this.config.basicKey;
-    config.deviceId = this.config.deviceId; config.deviceName = deviceName.trim() || 'HReadest'; config.enabled = enabled;
+    config.deviceId = this.config.deviceId; config.deviceName = deviceName.trim() || '墨契 Attune'; config.enabled = enabled;
     if (!KOSYNC_STRATEGIES.includes(strategy)) throw new Error('INVALID_SYNC_STRATEGY');
     config.strategy = strategy; config.sendMetadata = sendMetadata; config.customHeaders = parseCustomHeaders(headers);
     config.lastSyncedAt = this.config.lastSyncedAt;

@@ -1,3 +1,4 @@
+import { LegalBlock, LegalSpan, legalBlocks } from '../core/LegalMarkdown';
 import { util } from '@kit.ArkTS';
 import { common } from '@kit.AbilityKit';
 import { webview } from '@kit.ArkWeb';
@@ -90,7 +91,7 @@ struct Index {
   @State koLastSynced: string = '';
   @State connecting: boolean = false;
   @State savingSyncOptions: boolean = false;
-  @State deviceName: string = 'HReadest';
+  @State deviceName: string = '墨契 Attune';
   @State fontSize: number = 20;
   @State lineHeight: number = 1.7;
   @State typography: ReaderSettings = new ReaderSettings();
@@ -155,7 +156,7 @@ struct Index {
   @State sortBy: string = 'recent';
   @State viewMenu: boolean = false;
   @State legalDocument: string = '';
-  @State legalText: string = '';
+  @State legalContent: LegalBlock[] = [];
   private legalRequest: number = 0;
   @State settingsTab: string = 'font_layout';
   @State shelfWidth: number = 400;
@@ -1187,7 +1188,7 @@ struct Index {
       Button({ type: ButtonType.Normal }) {
         Row({ space: 12 }) {
           Stack() {
-            if (id === 'readest') { Image($r('app.media.startIcon')).width(24).height(24).objectFit(ImageFit.Contain) }
+            if (id === 'readest') { Image($r('app.media.readest_service')).width(24).height(24).objectFit(ImageFit.Contain) }
             else { this.icon(icon, 20) }
           }.width(36).height(36).backgroundColor(this.inset()).borderRadius(18)
           Column({ space: 4 }) {
@@ -1255,9 +1256,27 @@ struct Index {
           this.notice()
           if (this.legalDocument) {
             Column({ space: 12 }) {
-              Button(this.t('go_back')).onClick(() => { this.legalDocument = ''; this.legalRequest++; })
+              Row({ space: 8 }) {
+                this.iconButton('back', this.t('go_back'), () => { this.legalDocument = ''; this.legalRequest++; })
+                Text(this.t('about')).fontFamily(this.appFontFamily).fontSize(14).fontColor(this.muted())
+              }.width('100%')
               this.sectionTitle(this.t(this.legalDocument === 'privacy' ? 'about_privacy' : 'about_licenses'))
-              Text(this.legalText).fontFamily(this.appFontFamily).fontSize(14).fontColor(this.fg()).width('100%').copyOption(CopyOptions.LocalDevice)
+              ForEach(this.legalContent, (block: LegalBlock) => {
+                if (block.kind === 'rule') { this.rule() }
+                else {
+                  Text() {
+                    ForEach(block.spans, (span: LegalSpan) => {
+                      Span(span.text).fontWeight(block.kind === 'heading' || span.bold ? FontWeight.Medium : FontWeight.Normal)
+                        .fontFamily(span.code ? 'monospace' : this.appFontFamily)
+                        .fontColor(span.url ? this.primary() : this.fg())
+                        .decoration({ type: span.url ? TextDecorationType.Underline : TextDecorationType.None })
+                        .onClick(() => { if (span.url) this.openAboutLink(span.url); })
+                    })
+                  }.fontSize(block.kind === 'heading' ? (block.level === 1 ? 22 : 17) : 14)
+                    .lineHeight(block.kind === 'heading' ? 30 : 23).width('100%').copyOption(CopyOptions.LocalDevice)
+                    .padding(block.kind === 'table' ? 12 : 0).backgroundColor(block.kind === 'table' ? this.inset() : Color.Transparent).borderRadius(8)
+                }
+              })
             }.width('100%').alignItems(HorizontalAlign.Start)
           } else if (this.settingsTab === 'font_layout') {
             this.languageControls()
@@ -1287,19 +1306,20 @@ struct Index {
               }.width('100%')
               Text(this.t('about_description')).fontFamily(this.appFontFamily).fontSize(13).fontColor(this.muted()).width('100%')
               this.rule()
-              Column({ space: 4 }) {
-                Text(this.t('about_author')).fontFamily(this.appFontFamily).fontSize(13).fontColor(this.fg())
-                Row({ space: 4 }) {
-                  this.aboutLink(this.t('about_source'), 'https://github.com/TenofHearts/Harmony-Readest')
-                  Text('·').fontSize(12).fontColor(this.muted())
-                  this.aboutLink(this.t('about_homepage'), 'https://tenofhearts.github.io')
-                }
-              }.width('100%')
-              Column({ space: 4 }) {
-                Button(this.t('about_licenses')).onClick(() => { this.openLegalDocument('licenses'); })
-                Button(this.t('about_privacy')).onClick(() => { this.openLegalDocument('privacy'); })
-                this.aboutLink(this.t('about_support'), 'https://github.com/TenofHearts/Harmony-Readest/issues')
-              }.width('100%')
+              Text(this.t('about_author')).fontFamily(this.appFontFamily).fontSize(13).fontColor(this.fg()).width('100%')
+              // Readest BoxedList / NavigationRow: neutral full-width actions with dividers.
+              Column() {
+                this.aboutAction(this.t('about_source'), () => this.openAboutLink('https://github.com/TenofHearts/Harmony-Readest'))
+                this.rule()
+                this.aboutAction(this.t('about_homepage'), () => this.openAboutLink('https://tenofhearts.github.io'))
+                this.rule()
+                this.aboutAction(this.t('about_licenses'), () => { this.openLegalDocument('licenses'); })
+                this.rule()
+                this.aboutAction(this.t('about_privacy'), () => { this.openLegalDocument('privacy'); })
+                this.rule()
+                this.aboutAction(this.t('about_support'), () => this.openAboutLink('https://github.com/TenofHearts/Harmony-Readest/issues'))
+              }.width('100%').backgroundColor(this.inset()).borderRadius(8).clip(true)
+                .border({ width: 1, color: this.dividerTone() })
               Column({ space: 6 }) {
                 Text(this.t('about_independent')).fontFamily(this.appFontFamily).fontSize(11).fontColor(this.muted()).textAlign(TextAlign.Center)
                 Text(this.t('about_license')).fontFamily(this.appFontFamily).fontSize(11).fontColor(this.muted()).textAlign(TextAlign.Center)
@@ -1314,21 +1334,24 @@ struct Index {
 
   private async openLegalDocument(document: string): Promise<void> {
     const request = ++this.legalRequest;
-    this.legalDocument = document; this.legalText = this.t('legal_loading');
+    this.legalDocument = document; this.legalContent = legalBlocks(this.t('legal_loading'));
     try {
       const bytes = await this.getUIContext().getHostContext()!.resourceManager.getRawFileContent('legal/' + document + '.txt');
-      if (request === this.legalRequest) this.legalText = util.TextDecoder.create('utf-8').decodeToString(bytes);
+      if (request === this.legalRequest) this.legalContent = legalBlocks(util.TextDecoder.create('utf-8').decodeToString(bytes));
     } catch {
-      if (request === this.legalRequest) this.legalText = this.t('legal_error');
+      if (request === this.legalRequest) this.legalContent = legalBlocks(this.t('legal_error'));
     }
   }
 
   @Builder
-  aboutLink(label: string, url: string) {
+  aboutAction(label: string, action: () => void) {
     Button({ type: ButtonType.Normal }) {
-      Text(label).fontFamily(this.appFontFamily).fontSize(13).fontWeight(FontWeight.Medium).fontColor(this.primary())
-    }.constraintSize({ minHeight: 40 }).padding({ left: 12, right: 12 }).backgroundColor(Color.Transparent).borderRadius(6)
-      .accessibilityText(`${label}: ${url}`).onClick(() => this.openAboutLink(url))
+      Row({ space: 12 }) {
+        Text(label).fontFamily(this.appFontFamily).fontSize(14).fontColor(this.fg()).layoutWeight(1).textAlign(TextAlign.Start)
+        Stack() { this.icon('back', 16) }.width(20).height(20).rotate({ angle: 180 })
+      }.width('100%').constraintSize({ minHeight: 48 }).padding({ left: 16, right: 12, top: 8, bottom: 8 })
+    }.width('100%').padding(0).backgroundColor(Color.Transparent).borderRadius(0)
+      .accessibilityText(label).onClick(action)
   }
 
   // Readest KOSyncResolver: source label and preview live inside the choice.

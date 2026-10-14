@@ -1,5 +1,13 @@
 # Validation
 
+## Attune / 墨契 0.1.0 (2026-10-14)
+
+- The maintainer confirmed device and sync behavior validation in this conversation. This is maintainer-reported acceptance; the agent did not repeat the device or live-cloud checks or infer a detailed scenario matrix.
+- Updated branding, separate English/Chinese app names, transparent in-app artwork, original Readest service icon, consistent About actions, and native legal-document formatting are included.
+- Version metadata is 0.1.0 / 10013. Signing and build configuration are unchanged. No new binary was built or installed as part of this version/commit request.
+- Latest full Node run before the version bump: 121/122 passed. The local KoSync HTTP integration test failed to connect; maintainer-reported live sync validation does not establish the cause of this test failure.
+
+
 ## Reader cover image loading (2026-10-10)
 
 - Patch metadata is **0.0.13 / 10012** across app/entry/npm manifests, the npm lockfile and regenerated English/Chinese About labels. All **119 Node tests** pass after the version bump, and the signed release APP builds successfully. Its nested HAP was checked for matching version metadata, `debug: false` and the updated reader bundle. Evidence: `output/v0.0.13-tests.log`, `output/v0.0.13-release-build.log` and `output/v0.0.13-package-check.log`.

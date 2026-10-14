@@ -150,7 +150,7 @@ export class KoSyncSettings {
   userkey: string = '';
   basicKey: string = '';
   enabled: boolean = false;
-  deviceName: string = 'HReadest';
+  deviceName: string = '墨契 Attune';
   deviceId: string = '';
   strategy: string = 'prompt';
   sendMetadata: boolean = false;
