@@ -1,4 +1,4 @@
-import { mkdir, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
 const strings = {
   book_actions: ['Book actions', '书籍操作'], details: ['Details', '详情'], book_details: ['Book Details', '书籍详情'],
   share: ['Share', '分享'], share_book: ['Share Book', '分享书籍'], delete: ['Delete', '删除'],
@@ -12,7 +12,7 @@ const strings = {
   empty_bookmarks: ['No bookmarks yet.', '还没有书签。'], empty_highlights: ['No highlights yet.', '还没有高亮。'],
   highlight_yellow: ['Yellow', '黄色'], highlight_green: ['Green', '绿色'], highlight_blue: ['Blue', '蓝色'],
   highlight_pink: ['Pink', '粉色'], highlight_purple: ['Purple', '紫色'],
-  module_desc: ['Offline EPUB reading with bookmarks, highlights, custom typography and cloud sync', '离线 EPUB 阅读，支持书签、高亮、自定义排版与云同步'], EntryAbility_desc: ['Read EPUB books offline and sync your library and reading progress', '离线阅读 EPUB 电子书，同步书架与阅读进度'], EntryAbility_label: ['Readest', 'Readest'],
+  module_desc: ['Offline EPUB reading with bookmarks, highlights, custom typography and cloud sync', '离线 EPUB 阅读，支持书签、高亮、自定义排版与云同步'], EntryAbility_desc: ['Read EPUB books offline and sync your library and reading progress', '离线阅读 EPUB 电子书，同步书架与阅读进度'], EntryAbility_label: ['HReadest', 'HReadest'],
   library_subtitle: ['Your books, at your own pace.', '随时翻开，自在阅读。'], library: ['Bookshelf', '书架'], books: ['books', '本书'], import: ['Import EPUB', '导入 EPUB'],
   settings: ['Settings', '设置'], importing: ['Importing and checking EPUB…', '正在导入并检查 EPUB…'], empty_title: ['Your library is empty', '书架还是空的'],
   app_language: ['App language', '应用语言'], language_system: ['System', '跟随系统'],
@@ -40,8 +40,9 @@ const strings = {
   scheme_default: ['Default', '默认'], scheme_gray: ['Gray', '灰色'], scheme_sepia: ['Sepia', '褐色'], scheme_grass: ['Grass', '草绿'],
   scheme_cherry: ['Cherry', '樱桃'], scheme_sky: ['Sky', '天空'], scheme_solarized: ['Solarized', 'Solarized'], scheme_gruvbox: ['Gruvbox', 'Gruvbox'],
   scheme_nord: ['Nord', 'Nord'], scheme_contrast: ['Contrast', '高对比度'], scheme_sunset: ['Sunset', '日落'],
-  about_description: ["Readest for HarmonyOS is an independent EPUB reader for phones and tablets, with offline reading, a personal bookshelf, bookmarks and highlights, customizable typography and themes, Readest cloud sync, and KOReader progress sync.","Readest 鸿蒙版是一款面向手机和平板的独立 EPUB 阅读器，支持离线阅读、书架管理、书签与高亮、字体排版与主题设置、Readest 云同步及 KOReader 阅读进度同步。"],
-  about_author: ['Developed by TenofHearts', '开发者：TenofHearts'],
+  about_description: ["HReadest is an independent EPUB reader for phones and tablets, with offline reading, a personal bookshelf, bookmarks and highlights, customizable typography and themes, Readest cloud sync, and KOReader progress sync.","HReadest 是一款面向手机和平板的独立 EPUB 阅读器，支持离线阅读、书架管理、书签与高亮、字体排版与主题设置、Readest 云同步及 KOReader 阅读进度同步。"],
+  about_author: ['Developed by Jin Ye', '开发者：Jin Ye'],
+  about_source: ['Source code', '源代码'], about_licenses: ['Licenses & credits', '许可与致谢'], about_privacy: ['Privacy notice', '隐私说明'], about_support: ['Support', '问题反馈'], legal_loading: ['Loading…', '正在加载…'], legal_error: ['Could not load this document. Please return and try again.', '无法加载文档，请返回后重试。'],
   about_github: ['GitHub', 'GitHub'], about_homepage: ['Homepage', '个人主页'],
   about_independent: ['An independent project, not an official Readest release.', '本项目为独立开发，非 Readest 官方发行版。'],
   about_version: ['Version 0.0.13 · HarmonyOS', '版本 0.0.13 · HarmonyOS'], about_license: ['Licensed under AGPL-3.0-or-later', '遵循 AGPL-3.0-or-later 开源许可'],
@@ -121,4 +122,11 @@ for (const [locale, index] of [['base', 0], ['zh_CN', 1]]) {
   await mkdir(dir, { recursive: true });
   await writeFile(`${dir}/string.json`, JSON.stringify({ string: Object.entries(strings).map(([name, values]) => ({ name, value: values[index] })) }, null, 2) + '\n');
 }
-await writeFile('AppScope/resources/base/element/string.json', JSON.stringify({ string: [{ name: 'app_name', value: 'Readest' }] }, null, 2) + '\n');
+await writeFile('AppScope/resources/base/element/string.json', JSON.stringify({ string: [{ name: 'app_name', value: 'HReadest' }] }, null, 2) + '\n');
+
+// Ship the same privacy notice and license texts offline in About.
+await mkdir('entry/src/main/resources/rawfile/legal', { recursive: true });
+await writeFile('entry/src/main/resources/rawfile/legal/privacy.txt', await readFile(new URL('../PRIVACY.md', import.meta.url)));
+const legalFiles = ['THIRD_PARTY_NOTICES.md', 'LICENSE', 'vendor/foliate-js/LICENSE', 'node_modules/@zip.js/zip.js/LICENSE', 'node_modules/js-md5/LICENSE.txt'];
+const legalParts = await Promise.all(legalFiles.map(async file => file + '\n\n' + await readFile(new URL('../' + file, import.meta.url), 'utf8')));
+await writeFile('entry/src/main/resources/rawfile/legal/licenses.txt', legalParts.join('\n\n---\n\n'));

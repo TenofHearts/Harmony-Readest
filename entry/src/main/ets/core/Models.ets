@@ -150,7 +150,7 @@ export class KoSyncSettings {
   userkey: string = '';
   basicKey: string = '';
   enabled: boolean = false;
-  deviceName: string = 'Readest';
+  deviceName: string = 'HReadest';
   deviceId: string = '';
   strategy: string = 'prompt';
   sendMetadata: boolean = false;

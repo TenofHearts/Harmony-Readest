@@ -1,8 +1,8 @@
 <p align="center">
-  <img src="entry/src/main/resources/base/media/startIcon.png" alt="Readest app icon: an open book" width="128" height="128">
+  <img src="entry/src/main/resources/base/media/startIcon.png" alt="HReadest app icon: an open book" width="128" height="128">
 </p>
 
-<h1 align="center">Readest for HarmonyOS</h1>
+<h1 align="center">HReadest</h1>
 
 <p align="center">
   <img src="https://img.shields.io/badge/Platform-HarmonyOS-007DFF?style=flat-square" alt="Platform: HarmonyOS">
@@ -11,7 +11,7 @@
   <a href="https://github.com/TenofHearts"><img src="https://img.shields.io/badge/GitHub-TenofHearts-181717?style=flat-square&amp;logo=github" alt="TenofHearts on GitHub"></a>
 </p>
 
-Readest for HarmonyOS is an independent EPUB reader for phones and tablets, with offline reading, a personal bookshelf, bookmarks and highlights, customizable typography and themes, Readest cloud sync, and KOReader progress sync.
+HReadest is an independent EPUB reader for phones and tablets, with offline reading, a personal bookshelf, bookmarks and highlights, customizable typography and themes, Readest cloud sync, and KOReader progress sync.
 
 ## Reading and bookshelf
 
@@ -19,7 +19,7 @@ Import EPUB books from your device, browse covers and book details, and pick up 
 
 ## Bookmarks and highlights
 
-Bookmark pages and highlight selected text in five colors. The Annotations panel lets you browse, revisit, and remove saved bookmarks and highlights. Annotations are stored locally.
+Bookmark pages and highlight selected text in five colors. The Annotations panel lets you browse, revisit, and remove saved bookmarks and highlights. Annotations are stored locally and can optionally sync with Readest.
 
 ## Fonts, layout and themes
 
@@ -34,3 +34,11 @@ KOReader Sync (KoSync) synchronizes reading positions using the same EPUB, accou
 ## App language and supported books
 
 Choose English, Simplified Chinese, or the system language. The reader supports reflowable, DRM-free EPUB books; PDF and fixed-layout EPUB are currently unsupported.
+
+## Source, licensing, privacy and support
+
+Developed by Jin Ye. HReadest is an independent project, not an official Readest release. Adapted Readest and Foliate components retain their upstream copyrights. See [LICENSE](LICENSE), [third-party credits](THIRD_PARTY_NOTICES.md), and the [HReadest privacy notice](PRIVACY.md) (English and 简体中文). The privacy notice and full license texts are also available offline in Settings → About.
+
+[Project source](https://github.com/TenofHearts/Harmony-Readest) · [HReadest support](https://github.com/TenofHearts/Harmony-Readest/issues). Do not put credentials or private books in public issues. Readest is a separate service; compatibility does not imply endorsement.
+
+Before publishing a release, complete the [release checklist](docs/RELEASE_CHECKLIST.md), including release-specific source links and live sync acceptance. Existing automated sync fixtures do not establish full live cross-client compatibility.

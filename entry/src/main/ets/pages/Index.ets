@@ -1,3 +1,4 @@
+import { util } from '@kit.ArkTS';
 import { common } from '@kit.AbilityKit';
 import { webview } from '@kit.ArkWeb';
 import { hilog } from '@kit.PerformanceAnalysisKit';
@@ -89,7 +90,7 @@ struct Index {
   @State koLastSynced: string = '';
   @State connecting: boolean = false;
   @State savingSyncOptions: boolean = false;
-  @State deviceName: string = 'Readest';
+  @State deviceName: string = 'HReadest';
   @State fontSize: number = 20;
   @State lineHeight: number = 1.7;
   @State typography: ReaderSettings = new ReaderSettings();
@@ -153,6 +154,9 @@ struct Index {
   @State viewMode: string = 'grid';
   @State sortBy: string = 'recent';
   @State viewMenu: boolean = false;
+  @State legalDocument: string = '';
+  @State legalText: string = '';
+  private legalRequest: number = 0;
   @State settingsTab: string = 'font_layout';
   @State shelfWidth: number = 400;
 
@@ -178,6 +182,7 @@ struct Index {
 
   aboutToDisappear(): void { AppWindow.changed = () => {}; this.app?.dispose(); }
   onBackPress(): boolean {
+    if (this.settingsOpen && this.legalDocument) { this.legalDocument = ''; this.legalRequest++; return true; }
     if (this.settingsOpen && this.settingsTab === 'integrations' && this.syncDetail) { this.syncDetail = ''; return true; }
     if (this.detailsOpen) { this.detailsOpen = false; return true; }
     if (this.fontPicker) { this.fontPicker = ''; return true; }
@@ -1241,14 +1246,20 @@ struct Index {
               if (this.shelfWidth > 500 || this.settingsTab === tab) { Text(this.t(tab)).fontFamily(this.appFontFamily).fontSize(12).fontColor(this.fg()) }
             }.padding({ left: 10, right: 10 })
           }.height(36).borderRadius(8).backgroundColor(this.settingsTab === tab ? this.inset() : Color.Transparent)
-            .accessibilityText(this.t(tab)).onClick(() => { this.settingsTab = tab; })
+            .accessibilityText(this.t(tab)).onClick(() => { this.settingsTab = tab; this.legalDocument = ''; this.legalRequest++; })
         })
       }.width('100%').justifyContent(FlexAlign.Center).padding({ bottom: 12, left: 12, right: 12 })
       this.rule()
       Scroll() {
         Column() {
           this.notice()
-          if (this.settingsTab === 'font_layout') {
+          if (this.legalDocument) {
+            Column({ space: 12 }) {
+              Button(this.t('go_back')).onClick(() => { this.legalDocument = ''; this.legalRequest++; })
+              this.sectionTitle(this.t(this.legalDocument === 'privacy' ? 'about_privacy' : 'about_licenses'))
+              Text(this.legalText).fontFamily(this.appFontFamily).fontSize(14).fontColor(this.fg()).width('100%').copyOption(CopyOptions.LocalDevice)
+            }.width('100%').alignItems(HorizontalAlign.Start)
+          } else if (this.settingsTab === 'font_layout') {
             this.languageControls()
             this.sectionTitle(this.t('preview'))
             Column({ space: 16 }) {
@@ -1270,7 +1281,7 @@ struct Index {
               Row({ space: 14 }) {
                 Image($r('app.media.startIcon')).width(48).height(48).objectFit(ImageFit.Contain)
                 Column({ space: 4 }) {
-                  Text('Readest').fontFamily(this.appFontFamily).fontSize(22).fontWeight(FontWeight.Medium).fontColor(this.fg())
+                  Text(this.t('EntryAbility_label')).fontFamily(this.appFontFamily).fontSize(22).fontWeight(FontWeight.Medium).fontColor(this.fg())
                   Text(this.t('about_version')).fontFamily(this.appFontFamily).fontSize(12).fontColor(this.muted())
                 }.alignItems(HorizontalAlign.Start).layoutWeight(1)
               }.width('100%')
@@ -1279,10 +1290,15 @@ struct Index {
               Column({ space: 4 }) {
                 Text(this.t('about_author')).fontFamily(this.appFontFamily).fontSize(13).fontColor(this.fg())
                 Row({ space: 4 }) {
-                  this.aboutLink(this.t('about_github'), 'https://github.com/TenofHearts')
+                  this.aboutLink(this.t('about_source'), 'https://github.com/TenofHearts/Harmony-Readest')
                   Text('·').fontSize(12).fontColor(this.muted())
                   this.aboutLink(this.t('about_homepage'), 'https://tenofhearts.github.io')
                 }
+              }.width('100%')
+              Column({ space: 4 }) {
+                Button(this.t('about_licenses')).onClick(() => { this.openLegalDocument('licenses'); })
+                Button(this.t('about_privacy')).onClick(() => { this.openLegalDocument('privacy'); })
+                this.aboutLink(this.t('about_support'), 'https://github.com/TenofHearts/Harmony-Readest/issues')
               }.width('100%')
               Column({ space: 6 }) {
                 Text(this.t('about_independent')).fontFamily(this.appFontFamily).fontSize(11).fontColor(this.muted()).textAlign(TextAlign.Center)
@@ -1294,6 +1310,17 @@ struct Index {
       }.layoutWeight(1).width('100%').align(Alignment.Top).edgeEffect(EdgeEffect.Spring, { alwaysEnabled: true })
     }.width('92%').height('85%').constraintSize({ maxWidth: 720, maxHeight: 760 }).backgroundColor(this.bg()).borderRadius(16).clip(true)
       .border({ width: 1, color: this.dividerTone() }).shadow({ radius: 24, color: '#33000000' }).accessibilityText(this.t('settings'))
+  }
+
+  private async openLegalDocument(document: string): Promise<void> {
+    const request = ++this.legalRequest;
+    this.legalDocument = document; this.legalText = this.t('legal_loading');
+    try {
+      const bytes = await this.getUIContext().getHostContext()!.resourceManager.getRawFileContent('legal/' + document + '.txt');
+      if (request === this.legalRequest) this.legalText = util.TextDecoder.create('utf-8').decodeToString(bytes);
+    } catch {
+      if (request === this.legalRequest) this.legalText = this.t('legal_error');
+    }
   }
 
   @Builder

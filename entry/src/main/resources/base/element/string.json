@@ -130,7 +130,7 @@
     },
     {
       "name": "EntryAbility_label",
-      "value": "Readest"
+      "value": "HReadest"
     },
     {
       "name": "library_subtitle",
@@ -402,11 +402,35 @@
     },
     {
       "name": "about_description",
-      "value": "Readest for HarmonyOS is an independent EPUB reader for phones and tablets, with offline reading, a personal bookshelf, bookmarks and highlights, customizable typography and themes, Readest cloud sync, and KOReader progress sync."
+      "value": "HReadest is an independent EPUB reader for phones and tablets, with offline reading, a personal bookshelf, bookmarks and highlights, customizable typography and themes, Readest cloud sync, and KOReader progress sync."
     },
     {
       "name": "about_author",
-      "value": "Developed by TenofHearts"
+      "value": "Developed by Jin Ye"
+    },
+    {
+      "name": "about_source",
+      "value": "Source code"
+    },
+    {
+      "name": "about_licenses",
+      "value": "Licenses & credits"
+    },
+    {
+      "name": "about_privacy",
+      "value": "Privacy notice"
+    },
+    {
+      "name": "about_support",
+      "value": "Support"
+    },
+    {
+      "name": "legal_loading",
+      "value": "Loading…"
+    },
+    {
+      "name": "legal_error",
+      "value": "Could not load this document. Please return and try again."
     },
     {
       "name": "about_github",

@@ -33,6 +33,11 @@ test('resource regeneration preserves the complete font and replica language pac
   try {
     await mkdir(join(directory, 'AppScope/resources/base/element'), { recursive: true });
     execFileSync(process.execPath, [resolve('scripts/resources.mjs')], { cwd: directory });
+    assert.equal(await readFile(join(directory, 'entry/src/main/resources/rawfile/legal/privacy.txt'), 'utf8'), await readFile('PRIVACY.md', 'utf8'));
+    const licenses = await readFile(join(directory, 'entry/src/main/resources/rawfile/legal/licenses.txt'), 'utf8');
+    for (const file of ['THIRD_PARTY_NOTICES.md', 'LICENSE', 'vendor/foliate-js/LICENSE', 'node_modules/@zip.js/zip.js/LICENSE', 'node_modules/js-md5/LICENSE.txt']) {
+      assert.ok(licenses.includes(await readFile(file, 'utf8')), file + ': full license/credits are bundled');
+    }
     for (const [locale, entries] of resources) {
       const generated = JSON.parse(await readFile(join(directory, resourcePath(locale)), 'utf8')).string;
       const byName = values => Object.fromEntries(values.map(entry => [entry.name, entry.value]));

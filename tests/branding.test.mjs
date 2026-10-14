@@ -24,18 +24,16 @@ async function artworkBounds(image) {
 test('branding regeneration replaces legacy icon dimensions in both launcher resource scopes', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'harmonyreadest-branding-'));
   try {
-    for (const resource of ['src-tauri/icons/android/mipmap-xxxhdpi/ic_launcher_foreground.png', 'public/icon.png']) {
-      const source = `vendor/readest/apps/readest-app/${resource}`;
-      await mkdir(dirname(join(directory, source)), { recursive: true });
-      await copyFile(source, join(directory, source));
-    }
+    const source = 'assets/branding/hreadest-icon.png';
+    await mkdir(dirname(join(directory, source)), { recursive: true });
+    await copyFile(source, join(directory, source));
     for (const path of mediaPaths) {
       await mkdir(join(directory, path), { recursive: true });
       await writeFile(join(directory, path, 'foreground.png'), 'stale icon');
       await writeFile(join(directory, path, 'readest_background.png'), 'stale background');
     }
     execFileSync(process.execPath, [resolve('scripts/sync-branding.mjs')], { cwd: directory });
-    const originalBounds = await artworkBounds('vendor/readest/apps/readest-app/src-tauri/icons/android/mipmap-xxxhdpi/ic_launcher_foreground.png');
+    const originalBounds = await artworkBounds(source);
     for (const path of mediaPaths) {
       const foreground = await readFile(join(directory, path, 'foreground.png'));
       const metadata = await sharp(foreground).metadata();
@@ -60,6 +58,6 @@ test('branding regeneration replaces legacy icon dimensions in both launcher res
     assert.deepEqual(await readFile(join(directory, mediaPaths[0], 'foreground.png')),
       await readFile(join(directory, mediaPaths[1], 'foreground.png')));
     assert.deepEqual(await readFile(join(directory, mediaPaths[1], 'startIcon.png')),
-      await readFile('vendor/readest/apps/readest-app/public/icon.png'));
+      await readFile(join(directory, mediaPaths[0], 'foreground.png')));
   } finally { await rm(directory, { recursive: true, force: true }); }
 });

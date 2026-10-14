@@ -231,7 +231,7 @@ test('signed-in sync options save locally without authentication, progress traff
   for (const key of ['serverUrl', 'username', 'password', 'userkey', 'basicKey', 'deviceId']) assert.equal(app.config[key], credentials[key]);
   assert.equal(importFixture.commands, undefined);
   await app.updateSyncOptions(true, '');
-  assert.equal(importFixture.savedConfig.enabled, true); assert.equal(app.config.deviceName, 'Readest');
+  assert.equal(importFixture.savedConfig.enabled, true); assert.equal(app.config.deviceName, 'HReadest');
 });
 
 test('failed sync-option persistence retains the current account and enabled state', async () => {
